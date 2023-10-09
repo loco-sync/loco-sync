@@ -13,7 +13,7 @@
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "scripts": {
-    "clean": "rimraf ./build",
+    "clean": "rimraf ./dist",
     "test:eslint": "eslint --ext .ts,.tsx ./src",
     "test:types": "tsc",
     "test:lib": "jest --config ./jest.config.ts",
