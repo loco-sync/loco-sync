@@ -1,0 +1,31 @@
+{
+  "name": "@loco-sync/client",
+  "version": "0.0.1-beta.0",
+  "description": "",
+  "author": "Kevin Kusch",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loco-sync/loco-sync.git",
+    "directory": "packages/client"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "clean": "rimraf ./build",
+    "test:eslint": "eslint --ext .ts,.tsx ./src",
+    "test:types": "tsc",
+    "test:lib": "jest --config ./jest.config.ts",
+    "test:lib:dev": "pnpm run test:lib --watch",
+    "build:types": "tsc --build",
+    "build": "tsup src/index.ts --format cjs,esm && pnpm build:types"
+  },
+  "dependencies": {
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/uuid": "^9.0.4",
+    "zod": "^3.22.4"
+  }
+}
