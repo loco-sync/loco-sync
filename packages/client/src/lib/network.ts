@@ -1,14 +1,15 @@
 import type {
   SyncAction,
   Models,
-  LocalChanges,
+  MutationArgs,
   BootstrapPayload,
+  ModelsConfig,
 } from './core';
 import type { Result } from './typeUtils';
 
 // TODO: Could include some function here to check whether we're online / a callback to detect if we change online/offline?
-export interface NetworkClient<M extends Models> {
-  sendTransaction(changes: LocalChanges<M>): Promise<SendTransactionResult>;
+export interface NetworkClient<M extends Models, MC extends ModelsConfig<M>> {
+  sendTransaction(args: MutationArgs<M, MC>): Promise<SendTransactionResult>;
   deltaSync(fromSyncId: number, toSyncId: number): Promise<DeltaSyncResult<M>>;
   loadBootstrap(): Promise<LoadBootstrapResult<M>>;
 

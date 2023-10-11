@@ -111,20 +111,27 @@ export const createLocoSyncReactStore = <
     modelName: ModelName,
     modelId: ModelId
   ) => {
-    return modelsData.get(modelName)?.get(modelId)?.confirmedData;
+    return modelsData.get(modelName)?.get(modelId)?.confirmedData as
+      | ModelData<M, ModelName>
+      | undefined;
   };
+
   const getChangeSnapshots = <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId
   ) => {
-    return modelsData.get(modelName)?.get(modelId)?.changeSnapshots;
+    return modelsData.get(modelName)?.get(modelId)?.changeSnapshots as
+      | readonly ModelChangeSnapshot<M, ModelName>[]
+      | undefined;
   };
 
   const getOne = <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId
   ) => {
-    return modelsData.get(modelName)?.get(modelId)?.optimisticData;
+    return modelsData.get(modelName)?.get(modelId)?.optimisticData as
+      | ModelData<M, ModelName>
+      | undefined;
   };
 
   const getMany = <ModelName extends keyof M & string>(
@@ -139,7 +146,7 @@ export const createLocoSyncReactStore = <
     for (const { optimisticData } of modelMap.values()) {
       if (optimisticData) {
         if (!filters || modelPredicateFn(optimisticData, filters)) {
-          result.push(optimisticData);
+          result.push(optimisticData as ModelData<M, ModelName>);
         }
       }
     }

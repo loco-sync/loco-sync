@@ -1,6 +1,8 @@
 import type { ModelData, Models } from './core';
 import type { Simplify } from './typeUtils';
 
+// Only difference in this file is the imports
+
 export type ModelsRelationshipDefs<M extends Models> = {
   [ModelName in keyof M & string]?: Record<
     string,

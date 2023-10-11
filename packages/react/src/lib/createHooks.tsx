@@ -6,7 +6,11 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { LocoSyncClient, getStateUpdate } from '@loco-sync/client';
+import {
+  LocoSyncClient,
+  getStateUpdate,
+  getMutationLocalChanges,
+} from '@loco-sync/client';
 import type {
   ModelsRelationshipDefs,
   ModelRelationshipSelection,
@@ -16,6 +20,8 @@ import type {
   ModelResult,
   MutationFn,
   ToProcessMessage,
+  ModelsConfig,
+  ExtractModelsRelationshipDefs,
 } from '@loco-sync/client';
 import { type LocoSyncReactStore, createLocoSyncReactStore } from './store';
 import { QueryManyWatcher, QueryOneWatcher } from './watchers';
@@ -29,52 +35,84 @@ export type LocoSyncReactProvider = (
   props: LocoSyncReactProviderProps
 ) => JSX.Element;
 
-export interface LocoSyncReact<
-  M extends Models,
-  R extends ModelsRelationshipDefs<M>
-> {
+export interface LocoSyncReact<M extends Models, MC extends ModelsConfig<M>> {
   Provider: LocoSyncReactProvider;
   useQuery: {
     <ModelName extends keyof M & string>(
       modelName: ModelName,
       modelFilter?: ModelFilter<M, ModelName>
-    ): ModelResult<M, R, ModelName, undefined>[];
+    ): ModelResult<
+      M,
+      ExtractModelsRelationshipDefs<M, MC>,
+      ModelName,
+      undefined
+    >[];
 
     <
       ModelName extends keyof M & string,
-      Selection extends ModelRelationshipSelection<M, R, ModelName>
+      Selection extends ModelRelationshipSelection<
+        M,
+        ExtractModelsRelationshipDefs<M, MC>,
+        ModelName
+      >
     >(
       modelName: ModelName,
       modelFilter: ModelFilter<M, ModelName> | undefined,
       selection: Selection
-    ): ModelResult<M, R, ModelName, Selection>[];
+    ): ModelResult<
+      M,
+      ExtractModelsRelationshipDefs<M, MC>,
+      ModelName,
+      Selection
+    >[];
   };
   useQueryOne: {
     <ModelName extends keyof M & string>(
       modelName: ModelName,
       modelId: ModelId
-    ): ModelResult<M, R, ModelName, Record<string, never>> | undefined;
+    ):
+      | ModelResult<
+          M,
+          ExtractModelsRelationshipDefs<M, MC>,
+          ModelName,
+          Record<string, never>
+        >
+      | undefined;
 
     <
       ModelName extends keyof M & string,
-      Selection extends ModelRelationshipSelection<M, R, ModelName>
+      Selection extends ModelRelationshipSelection<
+        M,
+        ExtractModelsRelationshipDefs<M, MC>,
+        ModelName
+      >
     >(
       modelName: ModelName,
       modelId: ModelId,
       selection: Selection
-    ): ModelResult<M, R, ModelName, Selection> | undefined;
+    ):
+      | ModelResult<
+          M,
+          ExtractModelsRelationshipDefs<M, MC>,
+          ModelName,
+          Selection
+        >
+      | undefined;
   };
-  useMutation(): [MutationFn<M>];
+  useMutation(): [MutationFn<M, MC>];
   useIsHydrated: () => boolean;
 }
 
 export const createLocoSyncReact = <
   M extends Models,
-  R extends ModelsRelationshipDefs<M>
+  MC extends ModelsConfig<M>
 >(
-  syncClient: LocoSyncClient<M>,
-  relationshipDefs: R
-): LocoSyncReact<M, R> => {
+  syncClient: LocoSyncClient<M, MC>,
+  config: MC
+): LocoSyncReact<M, MC> => {
+  type R = ExtractModelsRelationshipDefs<M, MC>;
+  const relationshipDefs: R = config.relationshipDefs ?? {};
+
   const store = createLocoSyncReactStore<M>();
   const context = createContext({
     isHydrated: false,
@@ -105,7 +143,7 @@ export const createLocoSyncReact = <
                 state.concat({
                   type: 'startTransaction',
                   transactionId: payload.clientTransactionId,
-                  changes: payload.changes,
+                  changes: getMutationLocalChanges(config, payload.args),
                 })
               );
             } else if (payload.type === 'commit') {
@@ -220,9 +258,9 @@ export const createLocoSyncReact = <
     );
   };
 
-  const useMutation: LocoSyncReact<M, R>['useMutation'] = () => {
-    const mutationFn: MutationFn<M> = useCallback((changes) => {
-      syncClient.addLocalChanges(changes);
+  const useMutation: LocoSyncReact<M, MC>['useMutation'] = () => {
+    const mutationFn: MutationFn<M, MC> = useCallback((args) => {
+      syncClient.addMutation(args);
     }, []);
     return [mutationFn];
   };

@@ -3,16 +3,20 @@ import type {
   Models,
   BootstrapPayload,
   SyncAction,
-  LocalChanges,
+  ModelsConfig,
+  MutationArgs,
 } from './core';
 
-export type LocalDbPendingTransaction<M extends Models> = {
+export type LocalDbPendingTransaction<
+  M extends Models,
+  MC extends ModelsConfig<M>
+> = {
   id: number;
-  changes: LocalChanges<M>;
+  args: MutationArgs<M, MC>;
 };
 
 // TODO: Name. LocalStorageClient? StorageClient?
-export interface LocalDbClient<M extends Models> {
+export interface LocalDbClient<M extends Models, MC extends ModelsConfig<M>> {
   /**
    * Returns metadata and pending transactions, if the database exists
    * Otherwise, returns undefined
@@ -20,7 +24,7 @@ export interface LocalDbClient<M extends Models> {
   getMetadataAndPendingTransactions(): Promise<
     | {
         metadata: Metadata;
-        pendingTransactions: LocalDbPendingTransaction<M>[];
+        pendingTransactions: LocalDbPendingTransaction<M, MC>[];
       }
     | undefined
   >;
@@ -43,7 +47,7 @@ export interface LocalDbClient<M extends Models> {
    *
    * @param changes
    */
-  createPendingTransaction(changes: LocalChanges<M>): Promise<number>;
+  createPendingTransaction(args: MutationArgs<M, MC>): Promise<number>;
 
   /**
    * Remove a transaction by id

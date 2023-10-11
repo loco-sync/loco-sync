@@ -77,9 +77,10 @@ function applyRelationships<
     type SubSelection = ModelRelationshipSelection<M, R, ReferencedModelName>;
 
     if (relationshipDef.type === 'one') {
+      // TODO: Any way to make this type work?
       const filter = {
         [relationshipDef.references]: modelData[relationshipDef.field],
-      } as ModelFilter<M, ReferencedModelName>;
+      } as unknown as ModelFilter<M, ReferencedModelName>;
       const referencedModels = store.getMany(
         relationshipDef.referencesModelName,
         filter
@@ -116,9 +117,10 @@ function applyRelationships<
       result[relKey as keyof ModelResult<M, R, ModelName, Selection>] =
         oneResult as any;
     } else {
+      // TODO: Any way to make this type work?
       const filter = {
         [relationshipDef.references]: modelData[relationshipDef.field],
-      } as ModelFilter<M, ReferencedModelName>;
+      } as unknown as ModelFilter<M, ReferencedModelName>;
       const referencedModels = store.getMany(
         relationshipDef.referencesModelName,
         filter

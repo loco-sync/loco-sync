@@ -1,10 +1,9 @@
 import type {
   BootstrapPayload,
   LocalDbClient,
-  LocalDbPendingTransaction,
   Metadata,
-  ModelData,
   Models,
+  ModelsConfig,
 } from '@loco-sync/client';
 import { openDB, type IDBPDatabase, type DBSchema } from 'idb';
 
@@ -18,47 +17,16 @@ const DEFAULT_METADATA: Metadata = {
   lastUpdatedAt: new Date(Date.UTC(1970, 0)).toISOString(),
 };
 
-type _DBSchemaForModels<M extends Models> = {
-  [_METADATA]: {
-    key: string;
-    value: Metadata;
-  };
-  [_TRANSACTIONS]: {
-    key: number;
-    value: LocalDbPendingTransaction<M>;
-  };
-};
-
-// TODO: How to include modelName mapped type here? Seems like for "idb" types to work
-// I need to have an interface extend DBSchema, but you can't do mapped types + interfaces
-// Probably just going to cast everything in this file for now
-interface DBSchemaForModels<M extends Models> extends DBSchema {
-  [_METADATA]: {
-    key: string;
-    value: Metadata;
-  };
-  [_TRANSACTIONS]: {
-    key: number;
-    value: LocalDbPendingTransaction<M>;
-  };
-}
-
-// This type doesn't work as "idb" generic
-type ModelsDBSchema<M extends Models> = {
-  [ModelName in keyof M & string]: {
-    key: string;
-    value: ModelData<M, ModelName>;
-    // Indexes?
-  };
-};
-
 // TODO: What are the inputs here?
 // TODO: Figure out what to do on version changes. Seems like version might need to be fetched from backend?
 // TODO: What durability level to use on transactions? Don't want issues with processing sync actions twice.
-export const createLocoSyncIdbClient = <M extends Models>(
+export const createLocoSyncIdbClient = <
+  M extends Models,
+  MC extends ModelsConfig<M>
+>(
   name: string,
-  models: M
-): LocalDbClient<M> => {
+  config: MC
+): LocalDbClient<M, MC> => {
   // type DBTypes = DBSchemaForModels<M>;
 
   let _db: IDBPDatabase | undefined = undefined;
@@ -66,7 +34,7 @@ export const createLocoSyncIdbClient = <M extends Models>(
   const version = 1;
   const dbPromise = openDB(`loco-sync_${name}`, version, {
     upgrade(db, oldVersion, newVersion, transaction, event) {
-      for (const modelName in models) {
+      for (const modelName of config.modelNames) {
         db.createObjectStore(modelName, {
           keyPath: 'id',
         });
@@ -196,12 +164,10 @@ export const createLocoSyncIdbClient = <M extends Models>(
     loadBootstrap: async () => {
       const db = await getDb();
 
-      const allModelNames: (keyof M & string)[] = Object.keys(models);
-
-      const tx = db.transaction(allModelNames, 'readonly');
+      const tx = db.transaction(config.modelNames, 'readonly');
       const result = {} as BootstrapPayload<M>;
       await Promise.all(
-        allModelNames.map(async (modelName) => {
+        config.modelNames.map(async (modelName) => {
           const store = tx.objectStore(modelName);
           result[modelName] = await store.getAll();
         })
@@ -212,9 +178,7 @@ export const createLocoSyncIdbClient = <M extends Models>(
     saveBootstrap: async (payload, syncId) => {
       const db = await getDb();
 
-      const allModelNames: (keyof M & string)[] = Object.keys(models);
-
-      const tx = db.transaction([...allModelNames, _METADATA], 'readwrite');
+      const tx = db.transaction([...config.modelNames, _METADATA], 'readwrite');
 
       const metadataStore = tx.objectStore(_METADATA);
 

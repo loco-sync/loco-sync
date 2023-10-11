@@ -1,34 +1,64 @@
 import { z } from 'zod';
+// TODO: Maybe move the ModelsRelationshipDefs types to this file??
+import { ModelsRelationshipDefs } from './relationships';
 
 export type Models = {
-  [M in string]: Model;
+  [ModelName in string]: Model;
 };
+
+export interface ModelsConfig<M extends Models> {
+  modelNames: (keyof M & string)[];
+  relationshipDefs?: ModelsRelationshipDefs<M>;
+  parsers?: ModelsParsers<M>;
+  mutationDefs?: AnyMutationDefs<M>;
+}
+
+export type ModelsParsers<M extends Models> = {
+  [ModelName in keyof M & string]: z.ZodType<{ id: string }>;
+};
+
+export type ModelsParsersWithKeys<ModelName extends string> = {
+  [x in ModelName]: z.ZodType<{ id: string }>;
+};
+
+type MutationDefs<M extends Models, Args extends unknown> = {
+  getChanges: (args: Args) => LocalChanges<M>;
+};
+
+type AnyMutationDefs<M extends Models> = MutationDefs<M, unknown>;
+
+export type MutationArgs<
+  M extends Models,
+  MC extends ModelsConfig<M>
+> = MC['mutationDefs'] extends MutationDefs<M, infer Args>
+  ? Args
+  : LocalChanges<M>;
+
+export type MutationFn<M extends Models, MC extends ModelsConfig<M>> = (
+  args: MutationArgs<M, MC>
+) => void;
 
 export type ModelsWithKeys<ModelName extends string> = Record<ModelName, Model>;
 
-export type ModelBaseSchema = z.ZodObject<{
-  id: z.ZodString;
-}>;
+export type ExtractModelsRelationshipDefs<
+  M extends Models,
+  MC extends ModelsConfig<M>
+> = MC['relationshipDefs'] extends ModelsRelationshipDefs<M>
+  ? MC['relationshipDefs']
+  : {};
 
-// Zod based version - might go with this for MVP but seems overly opinionated
-export type Model = {
-  // schema: z.AnyZodObject;
-  schema: ModelBaseSchema;
-  // Next step would probably be including metadata on relationships with other models here?
-  // Also, assuming IndexedDB, we could include indexes here
-  // Then, these could be re-used in the in-memory component for searching
-  // (though TBD if those requests get routed through this component or not)
-  // If MVP is just loading everything into memory, then it's probably not necessary anyways?
-};
-
-// TODO: Since this will be stored in IndexedDB, should only use string or number here
-// I think sub-objects and arrays are fine too?
-// Should these be encoded in the types?
-
+// // Minimalist version
+export type Model = { id: string } & Record<string, unknown>;
 export type ModelData<
   M extends Models,
   ModelName extends keyof M & string
-> = z.infer<M[ModelName]['schema']>;
+> = M[ModelName];
+
+/**
+ *
+ * Everything below here is the same as in core.ts
+ *
+ */
 
 // TODO: Non-trivial filtering?
 export type ModelFilter<
@@ -37,28 +67,6 @@ export type ModelFilter<
 > = {
   [K in keyof ModelData<M, ModelName>]?: ModelData<M, ModelName>[K];
 };
-
-// // Minimalist version
-// export type Model = Record<string, unknown>;
-// export type ModelData<
-//   M extends Models,
-//   ModelName extends keyof M & string
-// > = M[ModelName];
-
-// // // // // // // // // // // //
-// Start of types that would be useful to provide limited ways to mutate data vs changing anything
-// Each mutation would have a particular name and (expected args schema)?
-type NamedMutations = {
-  [M in string]: NamedMutationFn;
-};
-type NamedMutationFn = (mutation: NamedMutation) => Promise<void>;
-// Need extra layer to go from these mutations to SyncActions
-type NamedMutation = {
-  id: number;
-  name: string;
-  args: any;
-};
-// // // // // // // // // // // //
 
 export type LocalChanges<M extends Models> = {
   [ModelName in keyof M & string]?: LocalChange<M, ModelName>[];
@@ -88,8 +96,6 @@ type BaseLocalChange<ModelName extends string> = {
   modelId: string;
   // batchIndex: number; // (optimization that we don't need yet)
 };
-
-export type MutationFn<M extends Models> = (changes: LocalChanges<M>) => void;
 
 export type SyncAction<M extends Models, ModelName extends keyof M & string> =
   | SyncAction_Insert<M, ModelName>
@@ -132,3 +138,15 @@ export interface Metadata {
 export type BootstrapPayload<M extends Models> = {
   [ModelName in keyof M & string]?: ModelData<M, ModelName>[];
 };
+
+export function getMutationLocalChanges<
+  M extends Models,
+  MC extends ModelsConfig<M>
+>(config: MC, args: MutationArgs<M, MC>): LocalChanges<M> {
+  if (config.mutationDefs) {
+    return config.mutationDefs.getChanges(args);
+  } else {
+    // Based on config.mutationDefs types, this must be LocalChanges
+    return args as LocalChanges<M>;
+  }
+}
