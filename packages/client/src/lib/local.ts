@@ -5,18 +5,16 @@ import type {
   SyncAction,
   ModelsConfig,
   MutationArgs,
+  ModelsSpec,
 } from './core';
 
-export type LocalDbPendingTransaction<
-  M extends Models,
-  MC extends ModelsConfig<M>
-> = {
+export type LocalDbPendingTransaction<MS extends ModelsSpec> = {
   id: number;
-  args: MutationArgs<M, MC>;
+  args: MutationArgs<MS>;
 };
 
 // TODO: Name. LocalStorageClient? StorageClient?
-export interface LocalDbClient<M extends Models, MC extends ModelsConfig<M>> {
+export interface LocalDbClient<MS extends ModelsSpec> {
   /**
    * Returns metadata and pending transactions, if the database exists
    * Otherwise, returns undefined
@@ -24,7 +22,7 @@ export interface LocalDbClient<M extends Models, MC extends ModelsConfig<M>> {
   getMetadataAndPendingTransactions(): Promise<
     | {
         metadata: Metadata;
-        pendingTransactions: LocalDbPendingTransaction<M, MC>[];
+        pendingTransactions: LocalDbPendingTransaction<MS>[];
       }
     | undefined
   >;
@@ -37,7 +35,7 @@ export interface LocalDbClient<M extends Models, MC extends ModelsConfig<M>> {
    */
   applySyncActions(
     lastSyncId: number,
-    sync: SyncAction<M, keyof M & string>[]
+    sync: SyncAction<MS['models'], keyof MS['models'] & string>[]
   ): Promise<void>;
 
   /**
@@ -47,7 +45,7 @@ export interface LocalDbClient<M extends Models, MC extends ModelsConfig<M>> {
    *
    * @param changes
    */
-  createPendingTransaction(args: MutationArgs<M, MC>): Promise<number>;
+  createPendingTransaction(args: MutationArgs<MS>): Promise<number>;
 
   /**
    * Remove a transaction by id
@@ -59,13 +57,13 @@ export interface LocalDbClient<M extends Models, MC extends ModelsConfig<M>> {
   /**
    * Load all model data to bootstrap the client
    */
-  loadBootstrap(): Promise<BootstrapPayload<M>>;
+  loadBootstrap(): Promise<BootstrapPayload<MS['models']>>;
 
   /**
    * Load all model data to bootstrap the client
    */
   saveBootstrap(
-    bootstrap: BootstrapPayload<M>,
+    bootstrap: BootstrapPayload<MS['models']>,
     lastSyncId: number
   ): Promise<void>;
 }

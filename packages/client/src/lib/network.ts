@@ -3,20 +3,23 @@ import type {
   Models,
   MutationArgs,
   BootstrapPayload,
-  ModelsConfig,
+  ModelsSpec,
 } from './core';
 import type { Result } from './typeUtils';
 
 // TODO: Could include some function here to check whether we're online / a callback to detect if we change online/offline?
-export interface NetworkClient<M extends Models, MC extends ModelsConfig<M>> {
-  sendTransaction(args: MutationArgs<M, MC>): Promise<SendTransactionResult>;
-  deltaSync(fromSyncId: number, toSyncId: number): Promise<DeltaSyncResult<M>>;
-  loadBootstrap(): Promise<LoadBootstrapResult<M>>;
+export interface NetworkClient<MS extends ModelsSpec> {
+  sendTransaction(args: MutationArgs<MS>): Promise<SendTransactionResult>;
+  deltaSync(
+    fromSyncId: number,
+    toSyncId: number
+  ): Promise<DeltaSyncResult<MS['models']>>;
+  loadBootstrap(): Promise<LoadBootstrapResult<MS['models']>>;
 
   // Does this need to return anything?
   // Could these args change on re-connections?
   initHandshake(data: any): void;
-  addListener(callback: SocketEventCallback<M>): () => void;
+  addListener(callback: SocketEventCallback<MS['models']>): () => void;
 }
 
 type NetworkErrorType = 'auth' | 'network' | 'server';

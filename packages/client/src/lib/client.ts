@@ -3,17 +3,16 @@ import type {
   BootstrapPayload,
   Models,
   SyncAction,
-  ModelsConfig,
+  ModelsSpec,
   MutationArgs,
 } from './core';
 import type { NetworkClient } from './network';
 import type { LocalDbClient } from './local';
 
-type LocoSyncOptions<M extends Models, MC extends ModelsConfig<M>> = {
+type LocoSyncOptions<MS extends ModelsSpec> = {
   name: string;
-  config?: MC;
-  networkClient: NetworkClient<M, MC>;
-  localDbClient: LocalDbClient<M, MC>;
+  networkClient: NetworkClient<MS>;
+  localDbClient: LocalDbClient<MS>;
 };
 
 type SyncListenerCallback<M extends Models> = (
@@ -21,15 +20,12 @@ type SyncListenerCallback<M extends Models> = (
   sync: SyncAction<M, keyof M & string>[]
 ) => void;
 
-type LocalChangeListenerCallback<
-  M extends Models,
-  MC extends ModelsConfig<M>
-> = (
+type LocalChangeListenerCallback<MS extends ModelsSpec> = (
   args:
     | {
         type: 'start';
         clientTransactionId: number;
-        args: MutationArgs<M, MC>;
+        args: MutationArgs<MS>;
       }
     | {
         type: 'commit';
@@ -42,32 +38,29 @@ type LocalChangeListenerCallback<
       }
     | {
         type: 'bootstrap';
-        bootstrap: BootstrapPayload<M>;
+        bootstrap: BootstrapPayload<MS['models']>;
       }
 ) => void;
 
 // Only used in this file, other components use LocalDbPendingTransaction or ClientPendingTransaction
-type CombinedPendingTransaction<
-  M extends Models,
-  MC extends ModelsConfig<M>
-> = {
+type CombinedPendingTransaction<MS extends ModelsSpec> = {
   clientTransactionId: number;
   localDbTransactionId: number;
-  args: MutationArgs<M, MC>;
+  args: MutationArgs<MS>;
 };
 
-export class LocoSyncClient<M extends Models, MC extends ModelsConfig<M>> {
+export class LocoSyncClient<MS extends ModelsSpec> {
   #id: string;
   #name: string;
-  #networkClient: NetworkClient<M, MC>;
-  #localDbClient: LocalDbClient<M, MC>;
+  #networkClient: NetworkClient<MS>;
+  #localDbClient: LocalDbClient<MS>;
 
-  #syncListeners: Map<string, SyncListenerCallback<M>>;
-  #localChangeListeners: Map<string, LocalChangeListenerCallback<M, MC>>;
+  #syncListeners: Map<string, SyncListenerCallback<MS['models']>>;
+  #localChangeListeners: Map<string, LocalChangeListenerCallback<MS>>;
   #lastClientTransactionId: number;
-  #pendingTransactionQueue: CombinedPendingTransaction<M, MC>[];
+  #pendingTransactionQueue: CombinedPendingTransaction<MS>[];
   #networkClientUnsubscribe?: () => void;
-  #futureSyncActions: SyncAction<M, keyof M & string>[];
+  #futureSyncActions: SyncAction<MS['models'], keyof MS['models'] & string>[];
   #catchUpSyncCompleted: boolean;
   #lastSyncId: number;
   #pushInFlight: boolean;
@@ -76,7 +69,7 @@ export class LocoSyncClient<M extends Models, MC extends ModelsConfig<M>> {
   #initStatus: 'ready' | 'running' | 'done' | 'failed';
   #isClosed: boolean;
 
-  constructor(opts: LocoSyncOptions<M, MC>) {
+  constructor(opts: LocoSyncOptions<MS>) {
     this.#id = v4();
     this.#name = opts.name;
 
@@ -136,8 +129,7 @@ export class LocoSyncClient<M extends Models, MC extends ModelsConfig<M>> {
         }
       }
 
-      const combinedPendingTransactions: CombinedPendingTransaction<M, MC>[] =
-        [];
+      const combinedPendingTransactions: CombinedPendingTransaction<MS>[] = [];
       for (const { args, id } of pendingTransactions) {
         const clientTransactionId = ++this.#lastClientTransactionId;
         combinedPendingTransactions.push({
@@ -195,7 +187,7 @@ export class LocoSyncClient<M extends Models, MC extends ModelsConfig<M>> {
     this.#initStatus = 'done';
   }
 
-  addSyncListener(callback: SyncListenerCallback<M>): () => void {
+  addSyncListener(callback: SyncListenerCallback<MS['models']>): () => void {
     const listenerId = v4();
     this.#syncListeners.set(listenerId, callback);
     return () => {
@@ -243,7 +235,7 @@ export class LocoSyncClient<M extends Models, MC extends ModelsConfig<M>> {
    * unsubscribe: method to remove the callback fn as a listener.
    * initialized: true if init is done (and therefore a bootstrap event will not be emitted), false otherwise
    */
-  addLocalChangeListener(callback: LocalChangeListenerCallback<M, MC>): {
+  addLocalChangeListener(callback: LocalChangeListenerCallback<MS>): {
     unsubscribe: () => void;
     initialized: boolean;
   } {
@@ -257,7 +249,7 @@ export class LocoSyncClient<M extends Models, MC extends ModelsConfig<M>> {
     };
   }
 
-  async addMutation(args: MutationArgs<M, MC>) {
+  async addMutation(args: MutationArgs<MS>) {
     if (this.#isClosed) {
       console.error('Client is closed, cannot add new transactions');
       return;
@@ -286,7 +278,7 @@ export class LocoSyncClient<M extends Models, MC extends ModelsConfig<M>> {
     ]);
   }
 
-  async loadLocalBootstrap(): Promise<BootstrapPayload<M>> {
+  async loadLocalBootstrap(): Promise<BootstrapPayload<MS['models']>> {
     return this.#localDbClient.loadBootstrap();
   }
 
@@ -327,7 +319,7 @@ export class LocoSyncClient<M extends Models, MC extends ModelsConfig<M>> {
 
   // TODO: Invariant check that transactions are in order?
   private addPendingTransactionsToQueue(
-    transactions: CombinedPendingTransaction<M, MC>[]
+    transactions: CombinedPendingTransaction<MS>[]
   ) {
     this.#pendingTransactionQueue.push(...transactions);
     this.pushFromQueue();

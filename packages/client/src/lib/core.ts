@@ -1,64 +1,65 @@
 import { z } from 'zod';
-// TODO: Maybe move the ModelsRelationshipDefs types to this file??
+// TODO: Maybe move the ModelsRelationshipDefs types to this file?
 import { ModelsRelationshipDefs } from './relationships';
+
+export type ModelsSpec<M extends Models = Models, MArgs = unknown> = {
+  models: M;
+  relationshipDefs?: ModelsRelationshipDefs<M>;
+  mutationArgs?: MArgs;
+};
+
+type AnyModelsSpec = ModelsSpec<any, any>;
 
 export type Models = {
   [ModelName in string]: Model;
 };
 
-export interface ModelsConfig<M extends Models> {
-  modelNames: (keyof M & string)[];
-  relationshipDefs?: ModelsRelationshipDefs<M>;
-  parsers?: ModelsParsers<M>;
-  mutationDefs?: AnyMutationDefs<M>;
-}
+export type ModelDefs<M extends Models> = {
+  [ModelName in keyof M & string]: ModelDef;
+};
+
+export type ModelDef = {
+  schemaVersion: number;
+};
+
+export type ModelsConfig<MS extends AnyModelsSpec> = {
+  modelDefs: ModelDefs<MS['models']>;
+  relationshipDefs?: ModelsRelationshipDefs<MS['models']>;
+  parsers?: ModelsParsers<MS['models']>;
+  mutationDefs?: MutationDefs<MS>;
+};
+
+export type AnyModelsConfig = ModelsConfig<AnyModelsSpec>;
 
 export type ModelsParsers<M extends Models> = {
   [ModelName in keyof M & string]: z.ZodType<{ id: string }>;
 };
 
-export type ModelsParsersWithKeys<ModelName extends string> = {
-  [x in ModelName]: z.ZodType<{ id: string }>;
+type MutationDefs<MS extends ModelsSpec> = {
+  getChanges: (args: MS['mutationArgs']) => LocalChanges<MS['models']>;
 };
 
-type MutationDefs<M extends Models, Args extends unknown> = {
-  getChanges: (args: Args) => LocalChanges<M>;
-};
+export type MutationArgs<MS extends ModelsSpec> =
+  MS['mutationArgs'] extends NonNullable<MS['mutationArgs']>
+    ? MS['mutationArgs']
+    : LocalChanges<MS['models']>;
 
-type AnyMutationDefs<M extends Models> = MutationDefs<M, unknown>;
-
-export type MutationArgs<
-  M extends Models,
-  MC extends ModelsConfig<M>
-> = MC['mutationDefs'] extends MutationDefs<M, infer Args>
-  ? Args
-  : LocalChanges<M>;
-
-export type MutationFn<M extends Models, MC extends ModelsConfig<M>> = (
-  args: MutationArgs<M, MC>
+export type MutationFn<MS extends ModelsSpec> = (
+  args: MutationArgs<MS>
 ) => void;
 
 export type ModelsWithKeys<ModelName extends string> = Record<ModelName, Model>;
 
-export type ExtractModelsRelationshipDefs<
-  M extends Models,
-  MC extends ModelsConfig<M>
-> = MC['relationshipDefs'] extends ModelsRelationshipDefs<M>
-  ? MC['relationshipDefs']
-  : {};
+export type ExtractModelsRelationshipDefs<MS extends ModelsSpec> =
+  MS['relationshipDefs'] extends ModelsRelationshipDefs<MS['models']>
+    ? MS['relationshipDefs']
+    : {};
 
-// // Minimalist version
 export type Model = { id: string } & Record<string, unknown>;
 export type ModelData<
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M
 > = M[ModelName];
-
-/**
- *
- * Everything below here is the same as in core.ts
- *
- */
 
 // TODO: Non-trivial filtering?
 export type ModelFilter<
@@ -139,14 +140,14 @@ export type BootstrapPayload<M extends Models> = {
   [ModelName in keyof M & string]?: ModelData<M, ModelName>[];
 };
 
-export function getMutationLocalChanges<
-  M extends Models,
-  MC extends ModelsConfig<M>
->(config: MC, args: MutationArgs<M, MC>): LocalChanges<M> {
+export function getMutationLocalChanges<MS extends ModelsSpec>(
+  config: ModelsConfig<MS>,
+  args: MutationArgs<MS>
+): LocalChanges<MS['models']> {
   if (config.mutationDefs) {
     return config.mutationDefs.getChanges(args);
   } else {
     // Based on config.mutationDefs types, this must be LocalChanges
-    return args as LocalChanges<M>;
+    return args as LocalChanges<MS['models']>;
   }
 }

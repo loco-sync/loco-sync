@@ -20,8 +20,9 @@ import type {
   ModelResult,
   MutationFn,
   ToProcessMessage,
-  ModelsConfig,
   ExtractModelsRelationshipDefs,
+  ModelsSpec,
+  ModelsConfig,
 } from '@loco-sync/client';
 import { type LocoSyncReactStore, createLocoSyncReactStore } from './store';
 import { QueryManyWatcher, QueryOneWatcher } from './watchers';
@@ -35,55 +36,55 @@ export type LocoSyncReactProvider = (
   props: LocoSyncReactProviderProps
 ) => JSX.Element;
 
-export interface LocoSyncReact<M extends Models, MC extends ModelsConfig<M>> {
+export interface LocoSyncReact<MS extends ModelsSpec> {
   Provider: LocoSyncReactProvider;
   useQuery: {
-    <ModelName extends keyof M & string>(
+    <ModelName extends keyof MS['models'] & string>(
       modelName: ModelName,
-      modelFilter?: ModelFilter<M, ModelName>
+      modelFilter?: ModelFilter<MS['models'], ModelName>
     ): ModelResult<
-      M,
-      ExtractModelsRelationshipDefs<M, MC>,
+      MS['models'],
+      ExtractModelsRelationshipDefs<MS>,
       ModelName,
       undefined
     >[];
 
     <
-      ModelName extends keyof M & string,
+      ModelName extends keyof MS['models'] & string,
       Selection extends ModelRelationshipSelection<
-        M,
-        ExtractModelsRelationshipDefs<M, MC>,
+        MS['models'],
+        ExtractModelsRelationshipDefs<MS>,
         ModelName
       >
     >(
       modelName: ModelName,
-      modelFilter: ModelFilter<M, ModelName> | undefined,
+      modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
       selection: Selection
     ): ModelResult<
-      M,
-      ExtractModelsRelationshipDefs<M, MC>,
+      MS['models'],
+      ExtractModelsRelationshipDefs<MS>,
       ModelName,
       Selection
     >[];
   };
   useQueryOne: {
-    <ModelName extends keyof M & string>(
+    <ModelName extends keyof MS['models'] & string>(
       modelName: ModelName,
       modelId: ModelId
     ):
       | ModelResult<
-          M,
-          ExtractModelsRelationshipDefs<M, MC>,
+          MS['models'],
+          ExtractModelsRelationshipDefs<MS>,
           ModelName,
           Record<string, never>
         >
       | undefined;
 
     <
-      ModelName extends keyof M & string,
+      ModelName extends keyof MS['models'] & string,
       Selection extends ModelRelationshipSelection<
-        M,
-        ExtractModelsRelationshipDefs<M, MC>,
+        MS['models'],
+        ExtractModelsRelationshipDefs<MS>,
         ModelName
       >
     >(
@@ -92,25 +93,23 @@ export interface LocoSyncReact<M extends Models, MC extends ModelsConfig<M>> {
       selection: Selection
     ):
       | ModelResult<
-          M,
-          ExtractModelsRelationshipDefs<M, MC>,
+          MS['models'],
+          ExtractModelsRelationshipDefs<MS>,
           ModelName,
           Selection
         >
       | undefined;
   };
-  useMutation(): [MutationFn<M, MC>];
+  useMutation(): [MutationFn<MS>];
   useIsHydrated: () => boolean;
 }
 
-export const createLocoSyncReact = <
-  M extends Models,
-  MC extends ModelsConfig<M>
->(
-  syncClient: LocoSyncClient<M, MC>,
-  config: MC
-): LocoSyncReact<M, MC> => {
-  type R = ExtractModelsRelationshipDefs<M, MC>;
+export const createLocoSyncReact = <MS extends ModelsSpec>(
+  syncClient: LocoSyncClient<MS>,
+  config: ModelsConfig<MS>
+): LocoSyncReact<MS> => {
+  type M = MS['models'];
+  type R = ExtractModelsRelationshipDefs<MS>;
   const relationshipDefs: R = config.relationshipDefs ?? {};
 
   const store = createLocoSyncReactStore<M>();
@@ -258,8 +257,8 @@ export const createLocoSyncReact = <
     );
   };
 
-  const useMutation: LocoSyncReact<M, MC>['useMutation'] = () => {
-    const mutationFn: MutationFn<M, MC> = useCallback((args) => {
+  const useMutation: LocoSyncReact<MS>['useMutation'] = () => {
+    const mutationFn: MutationFn<MS> = useCallback((args) => {
       syncClient.addMutation(args);
     }, []);
     return [mutationFn];

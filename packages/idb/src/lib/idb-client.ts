@@ -2,8 +2,8 @@ import type {
   BootstrapPayload,
   LocalDbClient,
   Metadata,
-  Models,
   ModelsConfig,
+  ModelsSpec,
 } from '@loco-sync/client';
 import { openDB, type IDBPDatabase, type DBSchema } from 'idb';
 
@@ -20,21 +20,18 @@ const DEFAULT_METADATA: Metadata = {
 // TODO: What are the inputs here?
 // TODO: Figure out what to do on version changes. Seems like version might need to be fetched from backend?
 // TODO: What durability level to use on transactions? Don't want issues with processing sync actions twice.
-export const createLocoSyncIdbClient = <
-  M extends Models,
-  MC extends ModelsConfig<M>
->(
+export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
   name: string,
-  config: MC
-): LocalDbClient<M, MC> => {
-  // type DBTypes = DBSchemaForModels<M>;
+  config: ModelsConfig<MS>
+): LocalDbClient<MS> => {
+  type M = MS['models'];
 
   let _db: IDBPDatabase | undefined = undefined;
   // TODO: What version number?
   const version = 1;
   const dbPromise = openDB(`loco-sync_${name}`, version, {
     upgrade(db, oldVersion, newVersion, transaction, event) {
-      for (const modelName of config.modelNames) {
+      for (const modelName in config.modelDefs) {
         db.createObjectStore(modelName, {
           keyPath: 'id',
         });
@@ -49,12 +46,15 @@ export const createLocoSyncIdbClient = <
     },
     // TODO: Are any of these methods needed?
     blocked(currentVersion, blockedVersion, event) {
+      console.log('IDB: Blocked');
       // …
     },
     blocking(currentVersion, blockedVersion, event) {
+      console.log('IDB: Blocking');
       // …
     },
     terminated() {
+      console.log('IDB: terminated');
       // …
     },
   }).then((db) => {
@@ -164,10 +164,12 @@ export const createLocoSyncIdbClient = <
     loadBootstrap: async () => {
       const db = await getDb();
 
-      const tx = db.transaction(config.modelNames, 'readonly');
+      const allModelNames: (keyof M & string)[] = Object.keys(config.modelDefs);
+
+      const tx = db.transaction(allModelNames, 'readonly');
       const result = {} as BootstrapPayload<M>;
       await Promise.all(
-        config.modelNames.map(async (modelName) => {
+        allModelNames.map(async (modelName) => {
           const store = tx.objectStore(modelName);
           result[modelName] = await store.getAll();
         })
@@ -178,7 +180,9 @@ export const createLocoSyncIdbClient = <
     saveBootstrap: async (payload, syncId) => {
       const db = await getDb();
 
-      const tx = db.transaction([...config.modelNames, _METADATA], 'readwrite');
+      const allModelNames: (keyof M & string)[] = Object.keys(config.modelDefs);
+
+      const tx = db.transaction([...allModelNames, _METADATA], 'readwrite');
 
       const metadataStore = tx.objectStore(_METADATA);
 
