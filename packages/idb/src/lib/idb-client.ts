@@ -22,7 +22,7 @@ const DEFAULT_METADATA: Metadata = {
 // TODO: What durability level to use on transactions? Don't want issues with processing sync actions twice.
 export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
   name: string,
-  config: ModelsConfig<MS>
+  config: ModelsConfig<MS>,
 ): LocalDbClient<MS> => {
   type M = MS['models'];
 
@@ -46,15 +46,12 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
     },
     // TODO: Are any of these methods needed?
     blocked(currentVersion, blockedVersion, event) {
-      console.log('IDB: Blocked');
       // …
     },
     blocking(currentVersion, blockedVersion, event) {
-      console.log('IDB: Blocking');
       // …
     },
     terminated() {
-      console.log('IDB: terminated');
       // …
     },
   }).then((db) => {
@@ -87,7 +84,7 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
         if (pendingTransactions.length > 0) {
           // TODO: Maybe delete database here?
           throw new Error(
-            'Invariant violation: should not be possible to have pending transaction without metadata saved'
+            'Invariant violation: should not be possible to have pending transaction without metadata saved',
           );
         } else {
           return undefined;
@@ -128,7 +125,7 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
           } else {
             return store.delete(syncAction.modelId);
           }
-        })
+        }),
       );
 
       await Promise.all([
@@ -139,7 +136,7 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
             lastSyncId,
             lastUpdatedAt: new Date().toISOString(),
           },
-          _METADATA
+          _METADATA,
         ),
         tx.done,
       ]);
@@ -151,7 +148,7 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
       });
       if (!Number.isInteger(id)) {
         throw new Error(
-          'Transaction id not set correctly, createPendingTransaction'
+          'Transaction id not set correctly, createPendingTransaction',
         );
       }
       // Transaction store has "autoIncrement: true", so this will be a number
@@ -164,7 +161,8 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
     loadBootstrap: async () => {
       const db = await getDb();
 
-      const allModelNames: (keyof M & string)[] = Object.keys(config.modelDefs);
+      const allModelNames = Object.keys(config.modelDefs) as (keyof M &
+        string)[];
 
       const tx = db.transaction(allModelNames, 'readonly');
       const result = {} as BootstrapPayload<M>;
@@ -172,7 +170,7 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
         allModelNames.map(async (modelName) => {
           const store = tx.objectStore(modelName);
           result[modelName] = await store.getAll();
-        })
+        }),
       );
 
       return result;
@@ -180,7 +178,8 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
     saveBootstrap: async (payload, syncId) => {
       const db = await getDb();
 
-      const allModelNames: (keyof M & string)[] = Object.keys(config.modelDefs);
+      const allModelNames = Object.keys(config.modelDefs) as (keyof M &
+        string)[];
 
       const tx = db.transaction([...allModelNames, _METADATA], 'readwrite');
 
@@ -190,7 +189,7 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
         Promise.all(
           Object.keys(payload).map(async (modelName) => {
             const store = tx.objectStore(modelName);
-            const allData = payload[modelName] ?? [];
+            const allData = payload[modelName as keyof M & string] ?? [];
             await Promise.all(
               allData.map((data) => {
                 try {
@@ -199,9 +198,9 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
                   console.error(e);
                   throw e;
                 }
-              })
+              }),
             );
-          })
+          }),
         ),
         metadataStore.add(
           {
@@ -210,7 +209,7 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
             lastSyncId: syncId,
             lastUpdatedAt: new Date().toISOString(),
           },
-          _METADATA
+          _METADATA,
         ),
         tx.done,
       ]);

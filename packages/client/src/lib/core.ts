@@ -2,13 +2,13 @@ import { z } from 'zod';
 // TODO: Maybe move the ModelsRelationshipDefs types to this file?
 import { ModelsRelationshipDefs } from './relationships';
 
-export type ModelsSpec<M extends Models = Models, MArgs = unknown> = {
+export type ModelsSpec<M extends Models = {}, MArgs = unknown> = {
   models: M;
   relationshipDefs?: ModelsRelationshipDefs<M>;
   mutationArgs?: MArgs;
 };
 
-type AnyModelsSpec = ModelsSpec<any, any>;
+type AnyModelsSpec = ModelsSpec<{}, any>;
 
 export type Models = {
   [ModelName in string]: Model;
@@ -45,7 +45,7 @@ export type MutationArgs<MS extends ModelsSpec> =
     : LocalChanges<MS['models']>;
 
 export type MutationFn<MS extends ModelsSpec> = (
-  args: MutationArgs<MS>
+  args: MutationArgs<MS>,
 ) => void;
 
 export type ModelsWithKeys<ModelName extends string> = Record<ModelName, Model>;
@@ -58,13 +58,13 @@ export type ExtractModelsRelationshipDefs<MS extends ModelsSpec> =
 export type Model = { id: string } & Record<string, unknown>;
 export type ModelData<
   M extends Models,
-  ModelName extends keyof M
+  ModelName extends keyof M,
 > = M[ModelName];
 
 // TODO: Non-trivial filtering?
 export type ModelFilter<
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 > = {
   [K in keyof ModelData<M, ModelName>]?: ModelData<M, ModelName>[K];
 };
@@ -104,21 +104,21 @@ export type SyncAction<M extends Models, ModelName extends keyof M & string> =
   | SyncAction_Delete<M, ModelName>;
 interface SyncAction_Insert<
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 > extends BaseSyncAction<ModelName> {
   action: 'insert';
   data: ModelData<M, ModelName>;
 }
 interface SyncAction_Update<
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 > extends BaseSyncAction<ModelName> {
   action: 'update';
   data: ModelData<M, ModelName>;
 }
 interface SyncAction_Delete<
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 > extends BaseSyncAction<ModelName> {
   action: 'delete';
 }
@@ -142,7 +142,7 @@ export type BootstrapPayload<M extends Models> = {
 
 export function getMutationLocalChanges<MS extends ModelsSpec>(
   config: ModelsConfig<MS>,
-  args: MutationArgs<MS>
+  args: MutationArgs<MS>,
 ): LocalChanges<MS['models']> {
   if (config.mutationDefs) {
     return config.mutationDefs.getChanges(args);

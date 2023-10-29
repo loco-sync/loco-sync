@@ -5,6 +5,7 @@ dist
 build
 tmp
 /out-tsc
+coverage
 
 # dependencies
 node_modules
