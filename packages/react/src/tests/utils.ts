@@ -1,14 +1,11 @@
-import 'fake-indexeddb/auto';
-import { expectTypeOf } from 'vitest';
 import {
   type ModelDefs,
-  type ModelsConfig,
   type ModelsRelationshipDefs,
+  type LocalDbClient,
+  type NetworkClient,
   one,
   many,
-  type LocalDbClient,
 } from '@loco-sync/client';
-import { createLocoSyncIdbClient } from '../index';
 
 type M = {
   Post: {
@@ -34,19 +31,19 @@ type M = {
 
 type R = typeof relationshipDefs;
 
-type MS = {
+export type MS = {
   models: M;
   relationshipDefs: R;
 };
 
-const modelDefs: ModelDefs<M> = {
+export const modelDefs: ModelDefs<M> = {
   Post: { schemaVersion: 0 },
   Author: { schemaVersion: 0 },
   Tag: { schemaVersion: 0 },
   PostTag: { schemaVersion: 0 },
 };
 
-const relationshipDefs = {
+export const relationshipDefs = {
   Post: {
     author: one('Author', {
       field: 'authorId',
@@ -68,13 +65,22 @@ const relationshipDefs = {
   },
 } satisfies ModelsRelationshipDefs<M>;
 
-describe('Create types', () => {
-  test('Basic create', () => {
-    const config = {
-      modelDefs,
-      relationshipDefs,
-    } satisfies ModelsConfig<MS>;
-    const idbClient = createLocoSyncIdbClient<MS>('name', config);
-    expectTypeOf(idbClient).toMatchTypeOf<LocalDbClient<MS>>();
-  });
-});
+export const fakeNetworkClient: NetworkClient<MS> = {
+  sendTransaction: async () => ({ ok: true, value: { lastSyncId: 0 } }),
+  deltaSync: async () => ({ ok: true, value: { sync: [] } }),
+  loadBootstrap: async () => ({
+    ok: true,
+    value: { lastSyncId: 0, bootstrap: {} },
+  }),
+  initHandshake: async () => {},
+  addListener: () => () => {},
+};
+
+export const fakeLocalDbClient: LocalDbClient<MS> = {
+  getMetadataAndPendingTransactions: async () => undefined,
+  applySyncActions: async () => {},
+  removePendingTransaction: async () => {},
+  createPendingTransaction: async () => 0,
+  saveBootstrap: async () => {},
+  loadBootstrap: async () => ({}),
+};

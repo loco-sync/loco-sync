@@ -17,7 +17,7 @@ type LocoSyncOptions<MS extends ModelsSpec> = {
 
 type SyncListenerCallback<M extends Models> = (
   lastSyncId: number,
-  sync: SyncAction<M, keyof M & string>[]
+  sync: SyncAction<M, keyof M & string>[],
 ) => void;
 
 type LocalChangeListenerCallback<MS extends ModelsSpec> = (
@@ -39,7 +39,7 @@ type LocalChangeListenerCallback<MS extends ModelsSpec> = (
     | {
         type: 'bootstrap';
         bootstrap: BootstrapPayload<MS['models']>;
-      }
+      },
 ) => void;
 
 // Only used in this file, other components use LocalDbPendingTransaction or ClientPendingTransaction
@@ -144,7 +144,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       if (bootstrapResult.ok) {
         await this.#localDbClient.saveBootstrap(
           bootstrapResult.value.bootstrap,
-          bootstrapResult.value.lastSyncId
+          bootstrapResult.value.lastSyncId,
         );
         this.#lastSyncId = bootstrapResult.value.lastSyncId;
 
@@ -181,7 +181,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
           this.#catchUpSyncCompleted = false;
           this.#futureSyncActions = [];
         }
-      }
+      },
     );
 
     this.#initStatus = 'done';
@@ -319,7 +319,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
 
   // TODO: Invariant check that transactions are in order?
   private addPendingTransactionsToQueue(
-    transactions: CombinedPendingTransaction<MS>[]
+    transactions: CombinedPendingTransaction<MS>[],
   ) {
     this.#pendingTransactionQueue.push(...transactions);
     this.pushFromQueue();
@@ -340,15 +340,15 @@ export class LocoSyncClient<MS extends ModelsSpec> {
 
     try {
       const result = await this.#networkClient.sendTransaction(
-        nextTransaction.args
+        nextTransaction.args,
       );
       if (!result.ok) {
         if (result.error === 'server') {
           console.error(
-            `Transaction(localDbTransactionId=${nextTransaction.localDbTransactionId}, clientTransactionId=${nextTransaction.clientTransactionId}) failed, rolling back`
+            `Transaction(localDbTransactionId=${nextTransaction.localDbTransactionId}, clientTransactionId=${nextTransaction.clientTransactionId}) failed, rolling back`,
           );
           await this.#localDbClient.removePendingTransaction(
-            nextTransaction.localDbTransactionId
+            nextTransaction.localDbTransactionId,
           );
           for (const cb of this.#localChangeListeners.values()) {
             cb({
@@ -369,7 +369,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
         }
       } else {
         await this.#localDbClient.removePendingTransaction(
-          nextTransaction.localDbTransactionId
+          nextTransaction.localDbTransactionId,
         );
         for (const cb of this.#localChangeListeners.values()) {
           cb({

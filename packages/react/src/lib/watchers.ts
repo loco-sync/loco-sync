@@ -26,7 +26,7 @@ type VisitResult<
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>
+  Selection extends ModelRelationshipSelection<M, R, ModelName>,
 > = {
   result: ModelResult<M, R, ModelName, Selection>;
   unsubscribers: Array<() => void>;
@@ -36,14 +36,14 @@ function applyRelationships<
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>
+  Selection extends ModelRelationshipSelection<M, R, ModelName>,
 >(
   modelName: ModelName,
   modelData: ModelData<M, ModelName>,
   selection: Selection | undefined,
   relationshipDefs: R,
   store: LocoSyncReactStore<M>,
-  listener: () => void
+  listener: () => void,
   // listener: (
   //   data: ModelData<M, ModelName> | undefined,
   //   changeSnapshots: readonly ModelChangeSnapshot<M, ModelName>[] | undefined,
@@ -83,10 +83,10 @@ function applyRelationships<
       } as unknown as ModelFilter<M, ReferencedModelName>;
       const referencedModels = store.getMany(
         relationshipDef.referencesModelName,
-        filter
+        filter,
       );
       unsubscribers.push(
-        store.subMany(relationshipDef.referencesModelName, filter, listener)
+        store.subMany(relationshipDef.referencesModelName, filter, listener),
       );
       const oneReferencedModel = referencedModels[0];
 
@@ -105,7 +105,7 @@ function applyRelationships<
           subSelection,
           relationshipDefs,
           store,
-          listener
+          listener,
         );
         if (subVisitResult) {
           unsubscribers.push(...subVisitResult.unsubscribers);
@@ -123,10 +123,10 @@ function applyRelationships<
       } as unknown as ModelFilter<M, ReferencedModelName>;
       const referencedModels = store.getMany(
         relationshipDef.referencesModelName,
-        filter
+        filter,
       );
       unsubscribers.push(
-        store.subMany(relationshipDef.referencesModelName, filter, listener)
+        store.subMany(relationshipDef.referencesModelName, filter, listener),
       );
 
       const many: ModelResult<M, R, ReferencedModelName, SubSelection>[] = [];
@@ -142,7 +142,7 @@ function applyRelationships<
           subSelection,
           relationshipDefs,
           store,
-          listener
+          listener,
         );
         if (subVisitResult) {
           unsubscribers.push(...subVisitResult.unsubscribers);
@@ -161,14 +161,14 @@ export class QueryManyWatcher<
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>
+  Selection extends ModelRelationshipSelection<M, R, ModelName>,
 > {
   #store: LocoSyncReactStore<M>;
   #relationshipDefs: R;
   #modelName: ModelName;
   #modelFilter: ModelFilter<M, ModelName> | undefined;
   #selection: Selection | undefined;
-  // #rerender: () => void;
+  #listeners: Set<() => void>;
 
   #current:
     | {
@@ -183,8 +183,7 @@ export class QueryManyWatcher<
     relationshipDefs: R,
     modelName: ModelName,
     modelFilter: ModelFilter<M, ModelName> | undefined,
-    selection: Selection | undefined
-    // rerender: () => void
+    selection: Selection | undefined,
   ) {
     this.#store = store;
     this.#relationshipDefs = relationshipDefs;
@@ -192,21 +191,21 @@ export class QueryManyWatcher<
     this.#modelFilter = modelFilter;
     this.#selection = selection;
 
+    this.#listeners = new Set();
     this.#result = [];
+
+    this.refresh();
   }
 
-  private refresh(): {
-    visitResults: VisitResult<M, R, ModelName, Selection>[];
-    baseUnsubscriber: () => void;
-  } {
+  private refresh() {
     const baseModelData = this.#store.getMany(
       this.#modelName,
-      this.#modelFilter
+      this.#modelFilter,
     );
     const baseUnsubscriber = this.#store.subMany(
       this.#modelName,
       this.#modelFilter,
-      () => this.listener()
+      () => this.onChange(),
     );
     const visitResults: VisitResult<M, R, ModelName, Selection>[] = [];
     for (const data of baseModelData) {
@@ -216,19 +215,23 @@ export class QueryManyWatcher<
         this.#selection,
         this.#relationshipDefs,
         this.#store,
-        () => this.listener()
+        () => this.onChange(),
       );
       if (visitResult) {
         visitResults.push(visitResult);
       }
     }
-    return {
+
+    this.#current = {
       visitResults,
       baseUnsubscriber,
     };
+    this.#result = visitResults.map((r) => r.result);
   }
 
-  unsubscribe() {
+  // At some point this should be smart enough to only un and re-subscribe to the parts that changed
+  private onChange() {
+    // Unsubscribe current listeners
     this.#current?.baseUnsubscriber();
     if (this.#current?.visitResults) {
       for (const { unsubscribers } of this.#current.visitResults) {
@@ -237,19 +240,21 @@ export class QueryManyWatcher<
         }
       }
     }
+
+    // Resubscribe and update results
+    this.refresh();
+
+    for (const callback of this.#listeners) {
+      callback();
+    }
   }
 
-  subscribe() {
-    this.#current = this.refresh();
-    this.#result = this.#current.visitResults.map((r) => r.result);
+  subscribe(callback: () => void) {
+    this.#listeners.add(callback);
+    return () => this.#listeners.delete(callback);
   }
 
-  private listener() {
-    this.unsubscribe();
-    this.subscribe();
-  }
-
-  getCurrentResults() {
+  getSnapshot() {
     return this.#result;
   }
 }
@@ -259,13 +264,14 @@ export class QueryOneWatcher<
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>
+  Selection extends ModelRelationshipSelection<M, R, ModelName>,
 > {
   #store: LocoSyncReactStore<M>;
   #relationshipDefs: R;
   #modelName: ModelName;
   #modelId: string;
   #selection: Selection | undefined;
+  #listeners: Set<() => void>;
 
   #current:
     | {
@@ -280,7 +286,7 @@ export class QueryOneWatcher<
     relationshipDefs: R,
     modelName: ModelName,
     modelId: string,
-    selection: Selection | undefined
+    selection: Selection | undefined,
   ) {
     this.#store = store;
     this.#relationshipDefs = relationshipDefs;
@@ -288,18 +294,18 @@ export class QueryOneWatcher<
     this.#modelId = modelId;
     this.#selection = selection;
 
+    this.#listeners = new Set();
     this.#result = undefined;
+
+    this.refresh();
   }
 
-  private refresh(): {
-    visitResult: VisitResult<M, R, ModelName, Selection> | undefined;
-    baseUnsubscriber: () => void;
-  } {
+  private refresh() {
     const baseModelData = this.#store.getOne(this.#modelName, this.#modelId);
     const baseUnsubscriber = this.#store.subOne(
       this.#modelName,
       this.#modelId,
-      () => this.listener()
+      () => this.onChange(),
     );
     const visitResult =
       baseModelData &&
@@ -309,34 +315,40 @@ export class QueryOneWatcher<
         this.#selection,
         this.#relationshipDefs,
         this.#store,
-        () => this.listener()
+        () => this.onChange(),
       );
-    return {
+
+    this.#current = {
       visitResult,
       baseUnsubscriber,
     };
+    this.#result = visitResult?.result;
   }
 
-  unsubscribe() {
+  // At some point this should be smart enough to only un and re-subscribe to the parts that changed
+  private onChange() {
+    // Unsubscribe current listeners
     this.#current?.baseUnsubscriber();
     if (this.#current?.visitResult) {
       for (const unsubscribe of this.#current.visitResult.unsubscribers) {
         unsubscribe();
       }
     }
+
+    // Resubscribe and update results
+    this.refresh();
+
+    for (const callback of this.#listeners) {
+      callback();
+    }
   }
 
-  subscribe() {
-    this.#current = this.refresh();
-    this.#result = this.#current?.visitResult?.result;
+  subscribe(callback: () => void) {
+    this.#listeners.add(callback);
+    return () => this.#listeners.delete(callback);
   }
 
-  private listener() {
-    this.unsubscribe();
-    this.subscribe();
-  }
-
-  getCurrentResults() {
+  getSnapshot() {
     return this.#result;
   }
 }

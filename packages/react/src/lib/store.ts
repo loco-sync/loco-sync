@@ -23,8 +23,9 @@ export type LocoSyncReactStore<M extends Models> = {
    */
   getMany: <ModelName extends keyof M & string>(
     modelName: ModelName,
-    filter?: ModelFilter<M, ModelName>
+    filter?: ModelFilter<M, ModelName>,
   ) => ModelData<M, ModelName>[];
+
   /**
    *
    * @param modelName
@@ -33,7 +34,7 @@ export type LocoSyncReactStore<M extends Models> = {
    */
   getOne: <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => ModelData<M, ModelName> | undefined;
 
   loadBootstrap: (payload: BootstrapPayload<M>) => void;
@@ -42,13 +43,18 @@ export type LocoSyncReactStore<M extends Models> = {
   subMany: <ModelName extends keyof M & string>(
     modelName: ModelName,
     filter: ModelFilter<M, ModelName> | undefined,
-    listener: () => void
+    listener: () => void,
   ) => () => void;
   subOne: <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId,
-    listener: () => void
+    listener: () => void,
   ) => () => void;
+
+  /**
+   * @intenal
+   */
+  logModelsData: () => void;
 
   /**
    *
@@ -58,7 +64,7 @@ export type LocoSyncReactStore<M extends Models> = {
    */
   getConfirmedData: <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => ModelData<M, ModelName> | undefined;
 
   /**
@@ -66,7 +72,7 @@ export type LocoSyncReactStore<M extends Models> = {
    */
   getChangeSnapshots: <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => readonly ModelChangeSnapshot<M, ModelName>[] | undefined;
 
   listenerCount(): number;
@@ -76,7 +82,7 @@ type Listener = () => void;
 type Listeners = Map<string, Listener>;
 
 export const createLocoSyncReactStore = <
-  M extends Models
+  M extends Models,
 >(): LocoSyncReactStore<M> => {
   const modelsData: Map<
     keyof M & string,
@@ -109,7 +115,7 @@ export const createLocoSyncReactStore = <
 
   const getConfirmedData = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => {
     return modelsData.get(modelName)?.get(modelId)?.confirmedData as
       | ModelData<M, ModelName>
@@ -118,7 +124,7 @@ export const createLocoSyncReactStore = <
 
   const getChangeSnapshots = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => {
     return modelsData.get(modelName)?.get(modelId)?.changeSnapshots as
       | readonly ModelChangeSnapshot<M, ModelName>[]
@@ -127,7 +133,7 @@ export const createLocoSyncReactStore = <
 
   const getOne = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => {
     return modelsData.get(modelName)?.get(modelId)?.optimisticData as
       | ModelData<M, ModelName>
@@ -136,7 +142,7 @@ export const createLocoSyncReactStore = <
 
   const getMany = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    filters?: ModelFilter<M, ModelName>
+    filters?: ModelFilter<M, ModelName>,
   ) => {
     const result: ModelData<M, ModelName>[] = [];
     const modelMap = modelsData.get(modelName);
@@ -157,7 +163,7 @@ export const createLocoSyncReactStore = <
     modelName: ModelName,
     modelId: ModelId,
     data: ModelData<M, ModelName>,
-    maybeChangeSnapshots: ModelChangeSnapshot<M, ModelName>[]
+    maybeChangeSnapshots: ModelChangeSnapshot<M, ModelName>[],
   ) => {
     let modelMap = modelsData.get(modelName);
     if (!modelMap) {
@@ -168,7 +174,7 @@ export const createLocoSyncReactStore = <
     const newChangeSnapshots = maybeChangeSnapshots ?? prev?.changeSnapshots;
     const newOptimisticData = applyChangeSnapshotsToData(
       data,
-      newChangeSnapshots
+      newChangeSnapshots,
     );
     if (typeof newOptimisticData === 'string') {
       console.error(newOptimisticData);
@@ -183,20 +189,20 @@ export const createLocoSyncReactStore = <
       modelName,
       modelId,
       prev?.optimisticData,
-      newOptimisticData
+      newOptimisticData,
     );
   };
 
   const deleteData = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => {
     const modelMap = modelsData.get(modelName);
     if (modelMap) {
       const prev = modelsData.get(modelName)?.get(modelId);
       const newOptimisticData = applyChangeSnapshotsToData(
         prev?.confirmedData,
-        prev?.changeSnapshots
+        prev?.changeSnapshots,
       );
       if (typeof newOptimisticData === 'string') {
         console.error(newOptimisticData);
@@ -208,7 +214,7 @@ export const createLocoSyncReactStore = <
         modelName,
         modelId,
         prev?.optimisticData,
-        undefined
+        undefined,
       );
     }
   };
@@ -216,7 +222,7 @@ export const createLocoSyncReactStore = <
   const setChangeSnapshots = <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId,
-    changeSnapshots: readonly ModelChangeSnapshot<M, ModelName>[]
+    changeSnapshots: readonly ModelChangeSnapshot<M, ModelName>[],
   ) => {
     let modelMap = modelsData.get(modelName);
     if (!modelMap) {
@@ -226,7 +232,7 @@ export const createLocoSyncReactStore = <
     const prev = modelsData.get(modelName)?.get(modelId);
     const newOptimisticData = applyChangeSnapshotsToData(
       prev?.confirmedData,
-      changeSnapshots
+      changeSnapshots,
     );
     if (typeof newOptimisticData === 'string') {
       console.error(newOptimisticData);
@@ -241,7 +247,7 @@ export const createLocoSyncReactStore = <
       modelName,
       modelId,
       prev?.optimisticData,
-      newOptimisticData
+      newOptimisticData,
     );
   };
 
@@ -268,8 +274,8 @@ export const createLocoSyncReactStore = <
               changeSnapshots: undefined,
               optimisticData: p,
             },
-          ])
-        )
+          ]),
+        ),
       );
     }
 
@@ -294,7 +300,7 @@ export const createLocoSyncReactStore = <
 
     if (commitPendingTransaction) {
       const toCommit = pendingTransactions.find(
-        (t) => t.transactionId === commitPendingTransaction.transactionId
+        (t) => t.transactionId === commitPendingTransaction.transactionId,
       );
       if (toCommit) {
         toCommit.lastSyncId = commitPendingTransaction.lastSyncId;
@@ -303,7 +309,7 @@ export const createLocoSyncReactStore = <
 
     if (removePendingTransactionIds) {
       pendingTransactions = pendingTransactions.filter(
-        (t) => !removePendingTransactionIds.includes(t.transactionId)
+        (t) => !removePendingTransactionIds.includes(t.transactionId),
       );
     }
 
@@ -312,13 +318,13 @@ export const createLocoSyncReactStore = <
     for (const patch of modelDataPatches) {
       if (patch.data) {
         const maybeModelChangeSnapshots = modelChangeSnapshots.find(
-          (c) => c.modelId === patch.modelId && c.modelName === patch.modelName
+          (c) => c.modelId === patch.modelId && c.modelName === patch.modelName,
         );
         setData(
           patch.modelName,
           patch.modelId,
           patch.data,
-          maybeModelChangeSnapshots?.changeSnapshots ?? []
+          maybeModelChangeSnapshots?.changeSnapshots ?? [],
         );
       } else {
         // TODO: Would there ever be changeSnapshots for this case?
@@ -334,7 +340,7 @@ export const createLocoSyncReactStore = <
         setChangeSnapshots(
           patch.modelName,
           patch.modelId,
-          patch.changeSnapshots
+          patch.changeSnapshots,
         );
       }
     }
@@ -343,7 +349,7 @@ export const createLocoSyncReactStore = <
   const subOne = <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId,
-    listener: () => void
+    listener: () => void,
   ) => {
     const modelNameId = `${modelName}:${modelId}`;
     const listenerId = v4();
@@ -361,7 +367,7 @@ export const createLocoSyncReactStore = <
   const subMany = <ModelName extends keyof M & string>(
     modelName: ModelName,
     filter: ModelFilter<M, ModelName> | undefined,
-    listener: () => void
+    listener: () => void,
   ) => {
     const listenerId = v4();
     let modelNameListeners = allModelNameListeners.get(modelName);
@@ -379,7 +385,7 @@ export const createLocoSyncReactStore = <
     modelName: ModelName,
     modelId: ModelId,
     prevData: ModelData<M, ModelName> | undefined,
-    nextData: ModelData<M, ModelName> | undefined
+    nextData: ModelData<M, ModelName> | undefined,
   ) => {
     const listenersToCall: Array<() => void> = [];
 
@@ -397,7 +403,7 @@ export const createLocoSyncReactStore = <
     }
 
     const modelNameIdListeners = allModelNameIdListeners.get(
-      getModelNameId(modelName, modelId)
+      getModelNameId(modelName, modelId),
     );
     if (modelNameIdListeners) {
       for (const listener of modelNameIdListeners.values()) {
@@ -431,7 +437,7 @@ export const createLocoSyncReactStore = <
 
   const getModelNameId = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => `${modelName}:${modelId}`;
 
   const listenerCount = () => {
@@ -443,6 +449,10 @@ export const createLocoSyncReactStore = <
       count += l.size;
     }
     return count;
+  };
+
+  const logModelsData = () => {
+    JSON.stringify(modelsData, null, 2);
   };
 
   return {
@@ -457,12 +467,13 @@ export const createLocoSyncReactStore = <
     subOne,
     subMany,
     listenerCount,
+    logModelsData,
   };
 };
 
 const modelPredicateFn = <M extends Models, ModelName extends keyof M & string>(
   data: ModelData<M, ModelName>,
-  filter: ModelFilter<M, ModelName>
+  filter: ModelFilter<M, ModelName>,
 ): boolean => {
   for (const filterKey in filter) {
     const filterValue = filter[filterKey];

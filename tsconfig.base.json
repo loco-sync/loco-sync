@@ -10,8 +10,7 @@
     "skipLibCheck": true,
     "moduleDetection": "force",
     "esModuleInterop": true,
-    // Added in Typescript 5
-    // "verbatimModuleSyntax": true,
+    "verbatimModuleSyntax": true,
 
     "strict": true,
     "strictNullChecks": true,

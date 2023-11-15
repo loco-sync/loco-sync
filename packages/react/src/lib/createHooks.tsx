@@ -33,7 +33,7 @@ export interface LocoSyncReactProviderProps {
 }
 
 export type LocoSyncReactProvider = (
-  props: LocoSyncReactProviderProps
+  props: LocoSyncReactProviderProps,
 ) => JSX.Element;
 
 export interface LocoSyncReact<MS extends ModelsSpec> {
@@ -41,7 +41,7 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
   useQuery: {
     <ModelName extends keyof MS['models'] & string>(
       modelName: ModelName,
-      modelFilter?: ModelFilter<MS['models'], ModelName>
+      modelFilter?: ModelFilter<MS['models'], ModelName>,
     ): ModelResult<
       MS['models'],
       ExtractModelsRelationshipDefs<MS>,
@@ -55,11 +55,11 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
         MS['models'],
         ExtractModelsRelationshipDefs<MS>,
         ModelName
-      >
+      >,
     >(
       modelName: ModelName,
       modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
-      selection: Selection
+      selection: Selection,
     ): ModelResult<
       MS['models'],
       ExtractModelsRelationshipDefs<MS>,
@@ -70,13 +70,13 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
   useQueryOne: {
     <ModelName extends keyof MS['models'] & string>(
       modelName: ModelName,
-      modelId: ModelId
+      modelId: ModelId,
     ):
       | ModelResult<
           MS['models'],
           ExtractModelsRelationshipDefs<MS>,
           ModelName,
-          Record<string, never>
+          {}
         >
       | undefined;
 
@@ -86,11 +86,11 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
         MS['models'],
         ExtractModelsRelationshipDefs<MS>,
         ModelName
-      >
+      >,
     >(
       modelName: ModelName,
       modelId: ModelId,
-      selection: Selection
+      selection: Selection,
     ):
       | ModelResult<
           MS['models'],
@@ -106,7 +106,7 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
 
 export const createLocoSyncReact = <MS extends ModelsSpec>(
   syncClient: LocoSyncClient<MS>,
-  config: ModelsConfig<MS>
+  config: ModelsConfig<MS>,
 ): LocoSyncReact<MS> => {
   type M = MS['models'];
   type R = ExtractModelsRelationshipDefs<MS>;
@@ -121,51 +121,66 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
   const Provider: LocoSyncReactProvider = (props) => {
     const [isHydrated, setIsHydrated] = useState(false);
 
-    const [toProcessMessages, setToProcessMessages] = useState<
-      ToProcessMessage<M>[]
-    >([]);
+    // const [toProcessMessages, setToProcessMessages] = useState<
+    //   ToProcessMessage<M>[]
+    // >([]);
 
     useEffect(() => {
       let syncUnsubscribe: (() => void) | undefined;
       let localChangeUnsubscribe: (() => void) | undefined;
       (async () => {
         syncUnsubscribe = syncClient.addSyncListener((lastSyncId, sync) => {
-          setToProcessMessages((state) =>
-            state.concat({ type: 'sync', lastSyncId, sync })
-          );
+          updateStoreWithMessage(store, { type: 'sync', lastSyncId, sync });
+          // setToProcessMessages((state) =>
+          //   state.concat({ type: 'sync', lastSyncId, sync }),
+          // );
         });
 
         const { unsubscribe, initialized } = syncClient.addLocalChangeListener(
           (payload) => {
             if (payload.type === 'start') {
-              setToProcessMessages((state) =>
-                state.concat({
-                  type: 'startTransaction',
-                  transactionId: payload.clientTransactionId,
-                  changes: getMutationLocalChanges(config, payload.args),
-                })
-              );
+              updateStoreWithMessage(store, {
+                type: 'startTransaction',
+                transactionId: payload.clientTransactionId,
+                changes: getMutationLocalChanges(config, payload.args),
+              });
+              // setToProcessMessages((state) =>
+              //   state.concat({
+              //     type: 'startTransaction',
+              //     transactionId: payload.clientTransactionId,
+              //     changes: getMutationLocalChanges(config, payload.args),
+              //   }),
+              // );
             } else if (payload.type === 'commit') {
-              setToProcessMessages((state) =>
-                state.concat({
-                  type: 'commitTransaction',
-                  transactionId: payload.clientTransactionId,
-                  lastSyncId: payload.lastSyncId,
-                })
-              );
+              updateStoreWithMessage(store, {
+                type: 'commitTransaction',
+                transactionId: payload.clientTransactionId,
+                lastSyncId: payload.lastSyncId,
+              });
+              // setToProcessMessages((state) =>
+              //   state.concat({
+              //     type: 'commitTransaction',
+              //     transactionId: payload.clientTransactionId,
+              //     lastSyncId: payload.lastSyncId,
+              //   }),
+              // );
             } else if (payload.type === 'rollback') {
-              setToProcessMessages((state) =>
-                state.concat({
-                  type: 'rollbackTransaction',
-                  transactionId: payload.clientTransactionId,
-                })
-              );
+              updateStoreWithMessage(store, {
+                type: 'rollbackTransaction',
+                transactionId: payload.clientTransactionId,
+              });
+              // setToProcessMessages((state) =>
+              //   state.concat({
+              //     type: 'rollbackTransaction',
+              //     transactionId: payload.clientTransactionId,
+              //   }),
+              // );
             } else if (payload.type === 'bootstrap') {
               store.loadBootstrap(payload.bootstrap);
               setIsHydrated(true);
               syncClient.startSync();
             }
-          }
+          },
         );
 
         localChangeUnsubscribe = unsubscribe;
@@ -187,30 +202,30 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
       };
     }, []);
 
-    // If there are any messages to process, take the first one from the list
-    useEffect(() => {
-      if (!isHydrated) {
-        return;
-      }
+    // // If there are any messages to process, take the first one from the list
+    // useEffect(() => {
+    //   if (!isHydrated) {
+    //     return;
+    //   }
 
-      const [first, ...rest] = toProcessMessages;
-      if (first) {
-        const update = getStateUpdate(
-          {
-            lastSyncId: store.lastSyncId(),
-            pendingTransactions: store.pendingTransactions(),
-            getData: store.getConfirmedData,
-            getChangeSnapshots: store.getChangeSnapshots,
-          },
-          first
-        );
-        if (update) {
-          store.update(update);
-        }
+    //   const [first, ...rest] = toProcessMessages;
+    //   if (first) {
+    //     const update = getStateUpdate(
+    //       {
+    //         lastSyncId: store.lastSyncId(),
+    //         pendingTransactions: store.pendingTransactions(),
+    //         getData: store.getConfirmedData,
+    //         getChangeSnapshots: store.getChangeSnapshots,
+    //       },
+    //       first,
+    //     );
+    //     if (update) {
+    //       store.update(update);
+    //     }
 
-        setToProcessMessages(rest);
-      }
-    }, [isHydrated, toProcessMessages]);
+    //     setToProcessMessages(rest);
+    //   }
+    // }, [isHydrated, toProcessMessages]);
 
     return (
       <context.Provider
@@ -225,35 +240,35 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
 
   const useQuery = <
     ModelName extends keyof M & string,
-    Selection extends ModelRelationshipSelection<M, R, ModelName>
+    Selection extends ModelRelationshipSelection<M, R, ModelName>,
   >(
     modelName: ModelName,
     modelFilter?: ModelFilter<M, ModelName>,
-    selection?: Selection
+    selection?: Selection,
   ): ModelResult<M, R, ModelName, Selection>[] => {
     return useQueryManyFromStore(
       store,
       relationshipDefs,
       modelName,
       modelFilter,
-      selection
+      selection,
     );
   };
 
   const useQueryOne = <
     ModelName extends keyof M & string,
-    Selection extends ModelRelationshipSelection<M, R, ModelName>
+    Selection extends ModelRelationshipSelection<M, R, ModelName>,
   >(
     modelName: ModelName,
     modelId: string,
-    selection?: Selection
+    selection?: Selection,
   ): ModelResult<M, R, ModelName, Selection> | undefined => {
     return useQueryOneFromStore(
       store,
       relationshipDefs,
       modelName,
       modelId,
-      selection
+      selection,
     );
   };
 
@@ -278,17 +293,38 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
   };
 };
 
+function updateStoreWithMessage<M extends Models>(
+  store: LocoSyncReactStore<M>,
+  message: ToProcessMessage<M>,
+): LocoSyncReactStore<M> {
+  const update = getStateUpdate(
+    {
+      lastSyncId: store.lastSyncId(),
+      pendingTransactions: store.pendingTransactions(),
+      getData: store.getConfirmedData,
+      getChangeSnapshots: store.getChangeSnapshots,
+    },
+    message,
+  );
+  if (update) {
+    store.update(update);
+  }
+
+  return store;
+}
+
+// TODO: I don't think this will work properly if modelId changes
 const useQueryOneFromStore = <
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>
+  Selection extends ModelRelationshipSelection<M, R, ModelName>,
 >(
   store: LocoSyncReactStore<M>,
   relationshipDefs: R,
   modelName: ModelName,
   modelId: string,
-  selection?: Selection
+  selection?: Selection,
 ): ModelResult<M, R, ModelName, Selection> | undefined => {
   const watcherRef = useRef<QueryOneWatcher<M, R, ModelName, Selection>>();
   if (!watcherRef.current) {
@@ -297,7 +333,7 @@ const useQueryOneFromStore = <
       relationshipDefs,
       modelName,
       modelId,
-      selection
+      selection,
     );
   }
   const watcher = watcherRef.current;
@@ -306,32 +342,30 @@ const useQueryOneFromStore = <
   useEffect(() => {
     if (invariantCheck.current) {
       console.error(
-        'The following args should not change per hook call, and changes are ignored: store, modelName, selection, relationshipDefs'
+        'The following args should not change per hook call, and changes are ignored: store, modelName, selection, relationshipDefs',
       );
     }
     invariantCheck.current = true;
   }, [store, modelName, JSON.stringify(selection), relationshipDefs]);
 
   return useSyncExternalStore(
-    useCallback(() => {
-      watcher.subscribe();
-      return () => watcher.unsubscribe();
-    }, [modelId]),
-    () => watcher.getCurrentResults()
+    useCallback((cb) => watcher.subscribe(cb), []),
+    useCallback(() => watcher.getSnapshot(), []),
   );
 };
 
+// TODO: I don't think this will work properly if modelFilter changes
 const useQueryManyFromStore = <
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>
+  Selection extends ModelRelationshipSelection<M, R, ModelName>,
 >(
   store: LocoSyncReactStore<M>,
   relationshipDefs: R,
   modelName: ModelName,
   modelFilter: ModelFilter<M, ModelName> | undefined,
-  selection?: Selection
+  selection?: Selection,
 ): ModelResult<M, R, ModelName, Selection>[] => {
   const watcherRef = useRef<QueryManyWatcher<M, R, ModelName, Selection>>();
   if (!watcherRef.current) {
@@ -340,7 +374,7 @@ const useQueryManyFromStore = <
       relationshipDefs,
       modelName,
       modelFilter,
-      selection
+      selection,
     );
   }
   const watcher = watcherRef.current;
@@ -349,17 +383,14 @@ const useQueryManyFromStore = <
   useEffect(() => {
     if (invariantCheck.current) {
       console.error(
-        'The following args should not change per hook call, and changes are ignored: store, modelName, selection, relationshipDefs'
+        'The following args should not change per hook call, and changes are ignored: store, modelName, selection, relationshipDefs',
       );
     }
     invariantCheck.current = true;
   }, [store, modelName, JSON.stringify(selection), relationshipDefs]);
 
   return useSyncExternalStore(
-    useCallback(() => {
-      watcher.subscribe();
-      return () => watcher.unsubscribe();
-    }, [JSON.stringify(modelFilter)]),
-    () => watcher.getCurrentResults()
+    useCallback((cb) => watcher.subscribe(cb), []),
+    useCallback(() => watcher.getSnapshot(), []),
   );
 };

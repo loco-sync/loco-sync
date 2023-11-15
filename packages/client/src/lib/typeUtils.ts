@@ -8,8 +8,8 @@ export type Simplify<AnyType> = _Simplify<AnyType, { deep: true }, Date>;
 
 type _Simplify<
   AnyType,
-  Options extends SimplifyOptions = Record<string, never>,
-  HaltType = never
+  Options extends SimplifyOptions = {},
+  HaltType = never,
 > = AnyType extends HaltType
   ? AnyType
   : Flatten<AnyType> extends AnyType
@@ -27,8 +27,8 @@ interface SimplifyOptions {
 
 type Flatten<
   AnyType,
-  Options extends SimplifyOptions = Record<string, never>,
-  HaltType = never
+  Options extends SimplifyOptions = {},
+  HaltType = never,
 > = Options['deep'] extends true
   ? {
       [KeyType in keyof AnyType]: _Simplify<

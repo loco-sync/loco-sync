@@ -1,6 +1,6 @@
 import { z } from 'zod';
 // TODO: Maybe move the ModelsRelationshipDefs types to this file?
-import { ModelsRelationshipDefs } from './relationships';
+import type { ModelsRelationshipDefs } from './relationships';
 
 export type ModelsSpec<M extends Models = {}, MArgs = unknown> = {
   models: M;

@@ -1,12 +1,12 @@
-import { assertType, expectTypeOf } from 'vitest';
+import { expectTypeOf } from 'vitest';
 import {
   type ModelDefs,
   type ModelsConfig,
   type ModelsRelationshipDefs,
   one,
   many,
-  Models,
-  ModelsParsers,
+  type Models,
+  type ModelsParsers,
 } from '../index';
 import { z } from 'zod';
 
