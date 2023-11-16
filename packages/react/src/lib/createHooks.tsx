@@ -6,11 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import {
-  LocoSyncClient,
-  getStateUpdate,
-  getMutationLocalChanges,
-} from '@loco-sync/client';
+import { LocoSyncClient, getMutationLocalChanges } from '@loco-sync/client';
 import type {
   ModelsRelationshipDefs,
   ModelRelationshipSelection,
@@ -19,7 +15,6 @@ import type {
   ModelId,
   ModelResult,
   MutationFn,
-  ToProcessMessage,
   ExtractModelsRelationshipDefs,
   ModelsSpec,
   ModelsConfig,
@@ -29,6 +24,7 @@ import { QueryManyWatcher, QueryOneWatcher } from './watchers';
 import { useSyncExternalStore } from 'use-sync-external-store/shim';
 
 export interface LocoSyncReactProviderProps {
+  notHydratedFallback?: ReactNode;
   children: ReactNode;
 }
 
@@ -130,7 +126,8 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
       let localChangeUnsubscribe: (() => void) | undefined;
       (async () => {
         syncUnsubscribe = syncClient.addSyncListener((lastSyncId, sync) => {
-          updateStoreWithMessage(store, { type: 'sync', lastSyncId, sync });
+          store.processMessage({ type: 'sync', lastSyncId, sync });
+          // updateStoreWithMessage(store, { type: 'sync', lastSyncId, sync });
           // setToProcessMessages((state) =>
           //   state.concat({ type: 'sync', lastSyncId, sync }),
           // );
@@ -139,11 +136,16 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
         const { unsubscribe, initialized } = syncClient.addLocalChangeListener(
           (payload) => {
             if (payload.type === 'start') {
-              updateStoreWithMessage(store, {
+              store.processMessage({
                 type: 'startTransaction',
                 transactionId: payload.clientTransactionId,
                 changes: getMutationLocalChanges(config, payload.args),
               });
+              // updateStoreWithMessage(store, {
+              //   type: 'startTransaction',
+              //   transactionId: payload.clientTransactionId,
+              //   changes: getMutationLocalChanges(config, payload.args),
+              // });
               // setToProcessMessages((state) =>
               //   state.concat({
               //     type: 'startTransaction',
@@ -152,11 +154,16 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
               //   }),
               // );
             } else if (payload.type === 'commit') {
-              updateStoreWithMessage(store, {
+              store.processMessage({
                 type: 'commitTransaction',
                 transactionId: payload.clientTransactionId,
                 lastSyncId: payload.lastSyncId,
               });
+              // updateStoreWithMessage(store, {
+              //   type: 'commitTransaction',
+              //   transactionId: payload.clientTransactionId,
+              //   lastSyncId: payload.lastSyncId,
+              // });
               // setToProcessMessages((state) =>
               //   state.concat({
               //     type: 'commitTransaction',
@@ -165,10 +172,14 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
               //   }),
               // );
             } else if (payload.type === 'rollback') {
-              updateStoreWithMessage(store, {
+              store.processMessage({
                 type: 'rollbackTransaction',
                 transactionId: payload.clientTransactionId,
               });
+              // updateStoreWithMessage(store, {
+              //   type: 'rollbackTransaction',
+              //   transactionId: payload.clientTransactionId,
+              // });
               // setToProcessMessages((state) =>
               //   state.concat({
               //     type: 'rollbackTransaction',
@@ -226,6 +237,10 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     //     setToProcessMessages(rest);
     //   }
     // }, [isHydrated, toProcessMessages]);
+
+    if (props.notHydratedFallback && !isHydrated) {
+      return <>{props.notHydratedFallback}</>;
+    }
 
     return (
       <context.Provider
@@ -293,25 +308,25 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
   };
 };
 
-function updateStoreWithMessage<M extends Models>(
-  store: LocoSyncReactStore<M>,
-  message: ToProcessMessage<M>,
-): LocoSyncReactStore<M> {
-  const update = getStateUpdate(
-    {
-      lastSyncId: store.lastSyncId(),
-      pendingTransactions: store.pendingTransactions(),
-      getData: store.getConfirmedData,
-      getChangeSnapshots: store.getChangeSnapshots,
-    },
-    message,
-  );
-  if (update) {
-    store.update(update);
-  }
+// function updateStoreWithMessage<M extends Models>(
+//   store: LocoSyncReactStore<M>,
+//   message: ToProcessMessage<M>,
+// ): LocoSyncReactStore<M> {
+//   const update = getStateUpdate(
+//     {
+//       lastSyncId: store.lastSyncId(),
+//       pendingTransactions: store.pendingTransactions(),
+//       getData: store.getConfirmedData,
+//       getChangeSnapshots: store.getChangeSnapshots,
+//     },
+//     message,
+//   );
+//   if (update) {
+//     store.update(update);
+//   }
 
-  return store;
-}
+//   return store;
+// }
 
 // TODO: I don't think this will work properly if modelId changes
 const useQueryOneFromStore = <

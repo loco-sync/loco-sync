@@ -7,8 +7,9 @@ import type {
   StateUpdate,
   BootstrapPayload,
   ModelFilter,
+  ToProcessMessage,
 } from '@loco-sync/client';
-import { applyChangeSnapshotsToData } from '@loco-sync/client';
+import { applyChangeSnapshotsToData, getStateUpdate } from '@loco-sync/client';
 import { v4 } from 'uuid';
 
 export type LocoSyncReactStore<M extends Models> = {
@@ -38,7 +39,7 @@ export type LocoSyncReactStore<M extends Models> = {
   ) => ModelData<M, ModelName> | undefined;
 
   loadBootstrap: (payload: BootstrapPayload<M>) => void;
-  update: (update: StateUpdate<M>) => void;
+  processMessage: (message: ToProcessMessage<M>) => void;
 
   subMany: <ModelName extends keyof M & string>(
     modelName: ModelName,
@@ -282,14 +283,29 @@ export const createLocoSyncReactStore = <
     notifyAllListeners();
   };
 
-  const update = ({
-    lastSyncId: _lastSyncId,
-    addPendingTransaction,
-    commitPendingTransaction,
-    removePendingTransactionIds,
-    modelDataPatches,
-    modelChangeSnapshots,
-  }: StateUpdate<M>) => {
+  const processMessage = (message: ToProcessMessage<M>) => {
+    const update = getStateUpdate(
+      {
+        lastSyncId,
+        pendingTransactions,
+        getData: getConfirmedData,
+        getChangeSnapshots: getChangeSnapshots,
+      },
+      message,
+    );
+    if (!update) {
+      return;
+    }
+
+    const {
+      lastSyncId: _lastSyncId,
+      addPendingTransaction,
+      commitPendingTransaction,
+      removePendingTransactionIds,
+      modelDataPatches,
+      modelChangeSnapshots,
+    } = update;
+
     if (_lastSyncId) {
       lastSyncId = _lastSyncId;
     }
@@ -345,6 +361,70 @@ export const createLocoSyncReactStore = <
       }
     }
   };
+
+  // const update = ({
+  //   lastSyncId: _lastSyncId,
+  //   addPendingTransaction,
+  //   commitPendingTransaction,
+  //   removePendingTransactionIds,
+  //   modelDataPatches,
+  //   modelChangeSnapshots,
+  // }: StateUpdate<M>) => {
+  //   if (_lastSyncId) {
+  //     lastSyncId = _lastSyncId;
+  //   }
+
+  //   if (addPendingTransaction) {
+  //     pendingTransactions.push(addPendingTransaction);
+  //   }
+
+  //   if (commitPendingTransaction) {
+  //     const toCommit = pendingTransactions.find(
+  //       (t) => t.transactionId === commitPendingTransaction.transactionId,
+  //     );
+  //     if (toCommit) {
+  //       toCommit.lastSyncId = commitPendingTransaction.lastSyncId;
+  //     }
+  //   }
+
+  //   if (removePendingTransactionIds) {
+  //     pendingTransactions = pendingTransactions.filter(
+  //       (t) => !removePendingTransactionIds.includes(t.transactionId),
+  //     );
+  //   }
+
+  //   const processedModels = new Set<string>();
+
+  //   for (const patch of modelDataPatches) {
+  //     if (patch.data) {
+  //       const maybeModelChangeSnapshots = modelChangeSnapshots.find(
+  //         (c) => c.modelId === patch.modelId && c.modelName === patch.modelName,
+  //       );
+  //       setData(
+  //         patch.modelName,
+  //         patch.modelId,
+  //         patch.data,
+  //         maybeModelChangeSnapshots?.changeSnapshots ?? [],
+  //       );
+  //     } else {
+  //       // TODO: Would there ever be changeSnapshots for this case?
+  //       deleteData(patch.modelName, patch.modelId);
+  //     }
+  //     processedModels.add(getModelNameId(patch.modelName, patch.modelId));
+  //   }
+
+  //   for (const patch of modelChangeSnapshots) {
+  //     if (
+  //       !processedModels.has(getModelNameId(patch.modelName, patch.modelId))
+  //     ) {
+  //       setChangeSnapshots(
+  //         patch.modelName,
+  //         patch.modelId,
+  //         patch.changeSnapshots,
+  //       );
+  //     }
+  //   }
+  // };
 
   const subOne = <ModelName extends keyof M & string>(
     modelName: ModelName,
@@ -462,7 +542,7 @@ export const createLocoSyncReactStore = <
     getChangeSnapshots,
     getOne,
     getMany,
-    update,
+    processMessage,
     loadBootstrap,
     subOne,
     subMany,

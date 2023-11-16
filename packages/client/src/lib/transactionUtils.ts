@@ -11,7 +11,7 @@ export type ModelId = string;
 
 export type ModelChangeSnapshot<
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 > =
   | {
       transactionId: number;
@@ -42,7 +42,7 @@ export type PendingTransaction<M extends Models> = {
 // Would a downstream consumer find this interesting?
 type ModelPendingChange<
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 > = {
   [K in keyof ModelData<M, ModelName>]?: {
     // original: ModelData<M, ModelName>[K];
@@ -54,11 +54,11 @@ export type InMemoryTransactionalState<M extends Models> = {
   lastSyncId: number;
   getData: <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => ModelData<M, ModelName> | undefined;
   getChangeSnapshots: <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId
+    modelId: ModelId,
   ) => readonly ModelChangeSnapshot<M, ModelName>[] | undefined;
   pendingTransactions: readonly PendingTransaction<M>[];
 };
@@ -90,7 +90,7 @@ type RollbackTransactionMessage = {
 
 type ModelChangeSnapshots<
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 > = {
   modelName: ModelName;
   modelId: string;
@@ -99,7 +99,7 @@ type ModelChangeSnapshots<
 
 export type ModelDataPatch<
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 > = {
   modelName: ModelName;
   modelId: string;
@@ -119,7 +119,7 @@ export type StateUpdate<M extends Models> = {
 
 export const getStateUpdate = <M extends Models>(
   state: InMemoryTransactionalState<M>,
-  message: ToProcessMessage<M>
+  message: ToProcessMessage<M>,
 ): StateUpdate<M> | null => {
   if (message.type === 'sync') {
     const result = getUpdatedStateForSync(state, message);
@@ -173,7 +173,7 @@ function getUpdatedStateForSync<M extends Models>(
     getChangeSnapshots,
     pendingTransactions,
   }: InMemoryTransactionalState<M>,
-  { lastSyncId: messageLastSyncId, sync }: SyncMessage<M>
+  { lastSyncId: messageLastSyncId, sync }: SyncMessage<M>,
 ): Result<StateUpdate<M>, string[]> {
   if (messageLastSyncId <= stateLastSyncId) {
     return {
@@ -202,7 +202,8 @@ function getUpdatedStateForSync<M extends Models>(
 
     const existingDataPatch = modelDataPatches.find(
       (p) =>
-        p.modelId === syncAction.modelId && p.modelName === syncAction.modelName
+        p.modelId === syncAction.modelId &&
+        p.modelName === syncAction.modelName,
     );
     const currentModelData = existingDataPatch
       ? existingDataPatch.data
@@ -211,7 +212,7 @@ function getUpdatedStateForSync<M extends Models>(
     if (syncAction.action === 'insert') {
       if (currentModelData) {
         errorMessages.push(
-          `Insert failed: ${syncAction.modelName} ${syncAction.modelId} already exists`
+          `Insert failed: ${syncAction.modelName} ${syncAction.modelId} already exists`,
         );
       } else if (existingDataPatch) {
         existingDataPatch.data = syncAction.data;
@@ -225,7 +226,7 @@ function getUpdatedStateForSync<M extends Models>(
     } else if (syncAction.action === 'update') {
       if (!currentModelData) {
         errorMessages.push(
-          `Update failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`
+          `Update failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
         );
       } else if (existingDataPatch) {
         existingDataPatch.data = syncAction.data;
@@ -239,7 +240,7 @@ function getUpdatedStateForSync<M extends Models>(
     } else if (syncAction.action === 'delete') {
       if (!currentModelData) {
         errorMessages.push(
-          `Delete failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`
+          `Delete failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
         );
       } else if (existingDataPatch) {
         existingDataPatch.data = undefined;
@@ -276,7 +277,7 @@ function getUpdatedStateForSync<M extends Models>(
     modelChangeSnapshots = removeChangeSnapshotsOfTransaction(
       transaction,
       getChangeSnapshots,
-      modelChangeSnapshots
+      modelChangeSnapshots,
     );
   }
 
@@ -296,7 +297,7 @@ function getUpdatedStateForSync<M extends Models>(
       addPendingTransaction: undefined,
       commitPendingTransaction: undefined,
       removePendingTransactionIds: removedTransactions.map(
-        (t) => t.transactionId
+        (t) => t.transactionId,
       ),
     },
   };
@@ -304,7 +305,7 @@ function getUpdatedStateForSync<M extends Models>(
 
 function getOptimisticUpdateForTransactionStart<M extends Models>(
   { getChangeSnapshots, getData }: InMemoryTransactionalState<M>,
-  { transactionId, changes }: StartTransactionMessage<M>
+  { transactionId, changes }: StartTransactionMessage<M>,
 ): Result<StateUpdate<M>, string[]> {
   const errorMessages: string[] = [];
   const modelChangeSnapshots: ModelChangeSnapshots<M, keyof M & string>[] = [];
@@ -321,7 +322,7 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
     const confirmedModelData = getData(change.modelName, change.modelId);
 
     const pendingModelChangeSnapshots = modelChangeSnapshots.find(
-      (c) => c.modelId === change.modelId && c.modelName === change.modelName
+      (c) => c.modelId === change.modelId && c.modelName === change.modelName,
     );
     const initialModelChangeSnapshots =
       getChangeSnapshots(change.modelName, change.modelId) ?? [];
@@ -332,7 +333,7 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
 
     const currentModelData = applyChangeSnapshotsToData(
       confirmedModelData,
-      currentModelChangeSnapshots
+      currentModelChangeSnapshots,
     );
     if (typeof currentModelData === 'string') {
       errorMessages.push(currentModelData);
@@ -438,7 +439,7 @@ function getOptimisticUpdateForTransactionCommit<M extends Models>(
     lastSyncId: stateLastSyncId,
     pendingTransactions,
   }: InMemoryTransactionalState<M>,
-  { transactionId, lastSyncId: messageLastSyncId }: CommitTransactionMessage
+  { transactionId, lastSyncId: messageLastSyncId }: CommitTransactionMessage,
 ): Result<StateUpdate<M> | null, string[]> {
   if (messageLastSyncId <= stateLastSyncId) {
     // This isn't necessarily an error, just means that the sync action for this transaction already came through
@@ -449,7 +450,7 @@ function getOptimisticUpdateForTransactionCommit<M extends Models>(
   }
 
   const toCommitTransaction = pendingTransactions.find(
-    (t) => t.transactionId === transactionId
+    (t) => t.transactionId === transactionId,
   );
   if (!toCommitTransaction) {
     return {
@@ -482,10 +483,10 @@ function getOptimisticUpdateForTransactionCommit<M extends Models>(
 
 function getUpdatedStateForTransactionRollback<M extends Models>(
   { getChangeSnapshots, pendingTransactions }: InMemoryTransactionalState<M>,
-  { transactionId }: RollbackTransactionMessage
+  { transactionId }: RollbackTransactionMessage,
 ): Result<StateUpdate<M>, string[]> {
   const rollbackTransaction = pendingTransactions.find(
-    (t) => t.transactionId == transactionId
+    (t) => t.transactionId == transactionId,
   );
   if (!rollbackTransaction) {
     return {
@@ -502,7 +503,7 @@ function getUpdatedStateForTransactionRollback<M extends Models>(
 
   const modelChangeSnapshots = removeChangeSnapshotsOfTransaction(
     rollbackTransaction,
-    getChangeSnapshots
+    getChangeSnapshots,
   );
 
   return {
@@ -525,7 +526,7 @@ function removeChangeSnapshotsOfTransaction<M extends Models>(
   currentChangeSnapshots: readonly ModelChangeSnapshots<
     M,
     keyof M & string
-  >[] = []
+  >[] = [],
 ): readonly ModelChangeSnapshots<M, keyof M & string>[] {
   const transactionId = rollbackTransaction.transactionId;
   const modelChangeSnapshots: ModelChangeSnapshots<M, keyof M & string>[] = [
@@ -534,24 +535,24 @@ function removeChangeSnapshotsOfTransaction<M extends Models>(
 
   for (const { modelId, modelName } of rollbackTransaction.affectedModels) {
     const pendingModelChangeSnapshots = modelChangeSnapshots.find(
-      (c) => c.modelId === modelId && c.modelName === modelName
+      (c) => c.modelId === modelId && c.modelName === modelName,
     );
     const initialModelChangeSnapshots = getChangeSnapshots(modelName, modelId);
-    const currentModelChangeSnapshots =
-      pendingModelChangeSnapshots?.changeSnapshots ??
-      initialModelChangeSnapshots;
 
-    if (!currentModelChangeSnapshots) {
-      continue;
+    if (pendingModelChangeSnapshots) {
+      pendingModelChangeSnapshots.changeSnapshots =
+        pendingModelChangeSnapshots.changeSnapshots.filter(
+          (c) => c.transactionId !== transactionId,
+        );
+    } else if (initialModelChangeSnapshots) {
+      modelChangeSnapshots.push({
+        modelId,
+        modelName,
+        changeSnapshots: initialModelChangeSnapshots.filter(
+          (c) => c.transactionId !== transactionId,
+        ),
+      });
     }
-
-    modelChangeSnapshots.push({
-      modelId,
-      modelName,
-      changeSnapshots: currentModelChangeSnapshots.filter(
-        (c) => c.transactionId !== transactionId
-      ),
-    });
   }
 
   return modelChangeSnapshots;
@@ -559,10 +560,10 @@ function removeChangeSnapshotsOfTransaction<M extends Models>(
 
 export const applyChangeSnapshotsToData = <
   M extends Models,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 >(
   data: ModelData<M, ModelName> | undefined,
-  changeSnapshots: readonly ModelChangeSnapshot<M, ModelName>[] | undefined
+  changeSnapshots: readonly ModelChangeSnapshot<M, ModelName>[] | undefined,
 ): ModelData<M, ModelName> | undefined | string => {
   if (!changeSnapshots) {
     return data;

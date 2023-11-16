@@ -5,18 +5,28 @@ import {
   type NetworkClient,
   one,
   many,
+  LocoSyncClient,
+  type SocketEventCallback,
+  type ModelsConfig,
+  type BootstrapPayload,
+  type SocketEvent,
 } from '@loco-sync/client';
 
 type M = {
+  Group: {
+    id: string;
+    name: string;
+  };
+  Author: {
+    id: string;
+    name: string;
+    groupId: string | null;
+  };
   Post: {
     id: string;
     title: string;
     body: string;
     authorId: string;
-  };
-  Author: {
-    id: string;
-    name: string;
   };
   Tag: {
     id: string;
@@ -37,6 +47,7 @@ export type MS = {
 };
 
 export const modelDefs: ModelDefs<M> = {
+  Group: { schemaVersion: 0 },
   Post: { schemaVersion: 0 },
   Author: { schemaVersion: 0 },
   Tag: { schemaVersion: 0 },
@@ -52,6 +63,11 @@ export const relationshipDefs = {
   Author: {
     posts: many('Post', {
       references: 'authorId',
+    }),
+  },
+  Group: {
+    authors: many('Author', {
+      references: 'groupId',
     }),
   },
   Tag: {},
@@ -83,4 +99,69 @@ export const fakeLocalDbClient: LocalDbClient<MS> = {
   createPendingTransaction: async () => 0,
   saveBootstrap: async () => {},
   loadBootstrap: async () => ({}),
+};
+
+export const setup = (bootstrap: BootstrapPayload<M>) => {
+  const config = {
+    modelDefs,
+    relationshipDefs,
+  } satisfies ModelsConfig<MS>;
+
+  const listeners = new Map<string, SocketEventCallback<MS['models']>>();
+  let listenerId = 0;
+
+  const networkClient: NetworkClient<MS> = {
+    ...fakeNetworkClient,
+    loadBootstrap: async () => {
+      return {
+        ok: true,
+        value: {
+          bootstrap,
+          lastSyncId: 1,
+        },
+      };
+    },
+    initHandshake: () => {
+      for (const callback of listeners.values()) {
+        callback({
+          type: 'handshake',
+          modelSchemaVersion: 1,
+          lastSyncId: 0,
+        });
+      }
+    },
+    addListener: (cb) => {
+      listenerId += 1;
+      const thisId = listenerId.toString();
+      listeners.set(thisId, cb);
+      return () => {
+        listeners.delete(thisId);
+      };
+    },
+  };
+
+  const localDbClient: LocalDbClient<MS> = {
+    ...fakeLocalDbClient,
+    async loadBootstrap() {
+      return bootstrap;
+    },
+  };
+
+  const syncClient = new LocoSyncClient({
+    name: 'test',
+    networkClient,
+    localDbClient,
+  });
+
+  const sendSocketEvent = (event: SocketEvent<M>) => {
+    for (const callback of listeners.values()) {
+      callback(event);
+    }
+  };
+
+  return {
+    syncClient,
+    config,
+    sendSocketEvent,
+  };
 };
