@@ -5,7 +5,7 @@ import type {
   ModelsConfig,
   ModelsSpec,
 } from '@loco-sync/client';
-import { openDB, type IDBPDatabase, type DBSchema } from 'idb';
+import { openDB, type IDBPDatabase } from 'idb';
 
 const _METADATA = '_metadata';
 const _TRANSACTIONS = '_transactions';
@@ -17,12 +17,27 @@ const DEFAULT_METADATA: Metadata = {
   lastUpdatedAt: new Date(Date.UTC(1970, 0)).toISOString(),
 };
 
+type CreateLocoSyncIdbClientOptions = {
+  onBlocking?: (
+    currentVersion: number,
+    blockedVersion: number | null,
+    event: IDBVersionChangeEvent,
+  ) => void;
+  onBlocked?: (
+    currentVersion: number,
+    blockedVersion: number | null,
+    event: IDBVersionChangeEvent,
+  ) => void;
+  onTerminated?: () => void;
+};
+
 // TODO: What are the inputs here?
 // TODO: Figure out what to do on version changes. Seems like version might need to be fetched from backend?
 // TODO: What durability level to use on transactions? Don't want issues with processing sync actions twice.
 export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
   name: string,
   config: ModelsConfig<MS>,
+  options?: CreateLocoSyncIdbClientOptions,
 ): LocalDbClient<MS> => {
   type M = MS['models'];
 
@@ -44,16 +59,9 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
 
       db.createObjectStore(_METADATA);
     },
-    // TODO: Are any of these methods needed?
-    blocked(currentVersion, blockedVersion, event) {
-      // …
-    },
-    blocking(currentVersion, blockedVersion, event) {
-      // …
-    },
-    terminated() {
-      // …
-    },
+    blocked: options?.onBlocked,
+    blocking: options?.onBlocking,
+    terminated: options?.onTerminated,
   }).then((db) => {
     _db = db;
     return db;
