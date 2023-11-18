@@ -166,12 +166,12 @@ export class QueryManyWatcher<
   #store: LocoSyncReactStore<M>;
   #relationshipDefs: R;
   #modelName: ModelName;
-  #modelFilter: ModelFilter<M, ModelName> | undefined;
   #selection: Selection | undefined;
   #listeners: Set<() => void>;
 
   #current:
     | {
+        modelFilter: ModelFilter<M, ModelName> | undefined;
         visitResults: VisitResult<M, R, ModelName, Selection>[];
         baseUnsubscriber: () => void;
       }
@@ -182,29 +182,22 @@ export class QueryManyWatcher<
     store: LocoSyncReactStore<M>,
     relationshipDefs: R,
     modelName: ModelName,
-    modelFilter: ModelFilter<M, ModelName> | undefined,
     selection: Selection | undefined,
   ) {
     this.#store = store;
     this.#relationshipDefs = relationshipDefs;
     this.#modelName = modelName;
-    this.#modelFilter = modelFilter;
     this.#selection = selection;
 
     this.#listeners = new Set();
     this.#result = [];
-
-    this.refresh();
   }
 
-  private refresh() {
-    const baseModelData = this.#store.getMany(
-      this.#modelName,
-      this.#modelFilter,
-    );
+  private refresh(modelFilter: ModelFilter<M, ModelName> | undefined) {
+    const baseModelData = this.#store.getMany(this.#modelName, modelFilter);
     const baseUnsubscriber = this.#store.subMany(
       this.#modelName,
-      this.#modelFilter,
+      modelFilter,
       () => this.onChange(),
     );
     const visitResults: VisitResult<M, R, ModelName, Selection>[] = [];
@@ -223,6 +216,7 @@ export class QueryManyWatcher<
     }
 
     this.#current = {
+      modelFilter,
       visitResults,
       baseUnsubscriber,
     };
@@ -231,25 +225,32 @@ export class QueryManyWatcher<
 
   // At some point this should be smart enough to only un and re-subscribe to the parts that changed
   private onChange() {
+    if (!this.#current) {
+      return;
+    }
+
     // Unsubscribe current listeners
-    this.#current?.baseUnsubscriber();
-    if (this.#current?.visitResults) {
-      for (const { unsubscribers } of this.#current.visitResults) {
-        for (const unsubscribe of unsubscribers) {
-          unsubscribe();
-        }
+    this.#current.baseUnsubscriber();
+    for (const { unsubscribers } of this.#current.visitResults) {
+      for (const unsubscribe of unsubscribers) {
+        unsubscribe();
       }
     }
 
     // Resubscribe and update results
-    this.refresh();
+    this.refresh(this.#current.modelFilter);
 
     for (const callback of this.#listeners) {
       callback();
     }
   }
 
-  subscribe(callback: () => void) {
+  subscribe(
+    callback: () => void,
+    modelFilter: ModelFilter<M, ModelName> | undefined,
+  ) {
+    this.refresh(modelFilter);
+
     this.#listeners.add(callback);
     return () => this.#listeners.delete(callback);
   }
@@ -269,12 +270,12 @@ export class QueryOneWatcher<
   #store: LocoSyncReactStore<M>;
   #relationshipDefs: R;
   #modelName: ModelName;
-  #modelId: string;
   #selection: Selection | undefined;
   #listeners: Set<() => void>;
 
   #current:
     | {
+        modelId: string;
         visitResult: VisitResult<M, R, ModelName, Selection> | undefined;
         baseUnsubscriber: () => void;
       }
@@ -285,27 +286,21 @@ export class QueryOneWatcher<
     store: LocoSyncReactStore<M>,
     relationshipDefs: R,
     modelName: ModelName,
-    modelId: string,
     selection: Selection | undefined,
   ) {
     this.#store = store;
     this.#relationshipDefs = relationshipDefs;
     this.#modelName = modelName;
-    this.#modelId = modelId;
     this.#selection = selection;
 
     this.#listeners = new Set();
     this.#result = undefined;
-
-    this.refresh();
   }
 
-  private refresh() {
-    const baseModelData = this.#store.getOne(this.#modelName, this.#modelId);
-    const baseUnsubscriber = this.#store.subOne(
-      this.#modelName,
-      this.#modelId,
-      () => this.onChange(),
+  private refresh(modelId: string) {
+    const baseModelData = this.#store.getOne(this.#modelName, modelId);
+    const baseUnsubscriber = this.#store.subOne(this.#modelName, modelId, () =>
+      this.onChange(),
     );
     const visitResult =
       baseModelData &&
@@ -319,6 +314,7 @@ export class QueryOneWatcher<
       );
 
     this.#current = {
+      modelId,
       visitResult,
       baseUnsubscriber,
     };
@@ -327,23 +323,29 @@ export class QueryOneWatcher<
 
   // At some point this should be smart enough to only un and re-subscribe to the parts that changed
   private onChange() {
+    if (!this.#current) {
+      return;
+    }
+
     // Unsubscribe current listeners
-    this.#current?.baseUnsubscriber();
-    if (this.#current?.visitResult) {
+    this.#current.baseUnsubscriber();
+    if (this.#current.visitResult) {
       for (const unsubscribe of this.#current.visitResult.unsubscribers) {
         unsubscribe();
       }
     }
 
     // Resubscribe and update results
-    this.refresh();
+    this.refresh(this.#current.modelId);
 
     for (const callback of this.#listeners) {
       callback();
     }
   }
 
-  subscribe(callback: () => void) {
+  subscribe(callback: () => void, modelId: string) {
+    this.refresh(modelId);
+
     this.#listeners.add(callback);
     return () => this.#listeners.delete(callback);
   }
