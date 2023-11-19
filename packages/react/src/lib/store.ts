@@ -4,13 +4,11 @@ import type {
   Models,
   ModelChangeSnapshot,
   PendingTransaction,
-  StateUpdate,
   BootstrapPayload,
   ModelFilter,
   ToProcessMessage,
 } from '@loco-sync/client';
 import { applyChangeSnapshotsToData, getStateUpdate } from '@loco-sync/client';
-import { v4 } from 'uuid';
 
 export type LocoSyncReactStore<M extends Models> = {
   lastSyncId: () => number;
@@ -80,7 +78,7 @@ export type LocoSyncReactStore<M extends Models> = {
 };
 
 type Listener = () => void;
-type Listeners = Map<string, Listener>;
+type Listeners = Set<Listener>;
 
 export const createLocoSyncReactStore = <
   M extends Models,
@@ -99,13 +97,10 @@ export const createLocoSyncReactStore = <
     >
   > = new Map();
 
-  type FilterListeners = Map<
-    string,
-    {
-      filter?: ModelFilter<M, keyof M & string>;
-      listener: Listener;
-    }
-  >;
+  type FilterListeners = Set<{
+    filter?: ModelFilter<M, keyof M & string>;
+    listener: Listener;
+  }>;
 
   const allModelNameListeners: Map<keyof M & string, FilterListeners> =
     new Map();
@@ -362,86 +357,19 @@ export const createLocoSyncReactStore = <
     }
   };
 
-  // const update = ({
-  //   lastSyncId: _lastSyncId,
-  //   addPendingTransaction,
-  //   commitPendingTransaction,
-  //   removePendingTransactionIds,
-  //   modelDataPatches,
-  //   modelChangeSnapshots,
-  // }: StateUpdate<M>) => {
-  //   if (_lastSyncId) {
-  //     lastSyncId = _lastSyncId;
-  //   }
-
-  //   if (addPendingTransaction) {
-  //     pendingTransactions.push(addPendingTransaction);
-  //   }
-
-  //   if (commitPendingTransaction) {
-  //     const toCommit = pendingTransactions.find(
-  //       (t) => t.transactionId === commitPendingTransaction.transactionId,
-  //     );
-  //     if (toCommit) {
-  //       toCommit.lastSyncId = commitPendingTransaction.lastSyncId;
-  //     }
-  //   }
-
-  //   if (removePendingTransactionIds) {
-  //     pendingTransactions = pendingTransactions.filter(
-  //       (t) => !removePendingTransactionIds.includes(t.transactionId),
-  //     );
-  //   }
-
-  //   const processedModels = new Set<string>();
-
-  //   for (const patch of modelDataPatches) {
-  //     if (patch.data) {
-  //       const maybeModelChangeSnapshots = modelChangeSnapshots.find(
-  //         (c) => c.modelId === patch.modelId && c.modelName === patch.modelName,
-  //       );
-  //       setData(
-  //         patch.modelName,
-  //         patch.modelId,
-  //         patch.data,
-  //         maybeModelChangeSnapshots?.changeSnapshots ?? [],
-  //       );
-  //     } else {
-  //       // TODO: Would there ever be changeSnapshots for this case?
-  //       deleteData(patch.modelName, patch.modelId);
-  //     }
-  //     processedModels.add(getModelNameId(patch.modelName, patch.modelId));
-  //   }
-
-  //   for (const patch of modelChangeSnapshots) {
-  //     if (
-  //       !processedModels.has(getModelNameId(patch.modelName, patch.modelId))
-  //     ) {
-  //       setChangeSnapshots(
-  //         patch.modelName,
-  //         patch.modelId,
-  //         patch.changeSnapshots,
-  //       );
-  //     }
-  //   }
-  // };
-
   const subOne = <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId,
     listener: () => void,
   ) => {
     const modelNameId = `${modelName}:${modelId}`;
-    const listenerId = v4();
     let modelNameIdListeners = allModelNameIdListeners.get(modelNameId);
     if (!modelNameIdListeners) {
-      modelNameIdListeners = new Map();
+      modelNameIdListeners = new Set();
       allModelNameIdListeners.set(modelNameId, modelNameIdListeners);
     }
-    modelNameIdListeners.set(listenerId, listener);
-    return () => {
-      modelNameIdListeners?.delete(listenerId);
-    };
+    modelNameIdListeners.add(listener);
+    return () => modelNameIdListeners?.delete(listener);
   };
 
   const subMany = <ModelName extends keyof M & string>(
@@ -449,16 +377,14 @@ export const createLocoSyncReactStore = <
     filter: ModelFilter<M, ModelName> | undefined,
     listener: () => void,
   ) => {
-    const listenerId = v4();
     let modelNameListeners = allModelNameListeners.get(modelName);
     if (!modelNameListeners) {
-      modelNameListeners = new Map();
+      modelNameListeners = new Set();
       allModelNameListeners.set(modelName, modelNameListeners);
     }
-    modelNameListeners.set(listenerId, { filter, listener });
-    return () => {
-      modelNameListeners?.delete(listenerId);
-    };
+    const filterListener = { filter, listener };
+    modelNameListeners.add(filterListener);
+    return () => modelNameListeners?.delete(filterListener);
   };
 
   const notifyListenersForModel = <ModelName extends keyof M & string>(

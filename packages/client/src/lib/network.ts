@@ -7,19 +7,18 @@ import type {
 } from './core';
 import type { Result } from './typeUtils';
 
+type Unsubscribe = () => void;
+
 // TODO: Could include some function here to check whether we're online / a callback to detect if we change online/offline?
 export interface NetworkClient<MS extends ModelsSpec> {
   sendTransaction(args: MutationArgs<MS>): Promise<SendTransactionResult>;
   deltaSync(
     fromSyncId: number,
-    toSyncId: number
+    toSyncId: number,
   ): Promise<DeltaSyncResult<MS['models']>>;
   loadBootstrap(): Promise<LoadBootstrapResult<MS['models']>>;
-
-  // Does this need to return anything?
-  // Could these args change on re-connections?
-  initHandshake(data: any): void;
-  addListener(callback: SocketEventCallback<MS['models']>): () => void;
+  initHandshake(): Unsubscribe | undefined;
+  addListener(callback: SocketEventCallback<MS['models']>): Unsubscribe;
 }
 
 type NetworkErrorType = 'auth' | 'network' | 'server';
@@ -38,18 +37,10 @@ type LoadBootstrapResult<M extends Models> = Result<
   NetworkErrorType
 >;
 
-type HandshakeRequest<Data> = {
-  type: 'handshake';
-  data: Data;
-  // userId: string;
-  // TODO: What else? Make generic? Just forward everything along?
-};
-
 type HandshakeResponse = {
   type: 'handshake';
   modelSchemaVersion: number;
   lastSyncId: number;
-  // TODO: Maybe some auth stuff?
 };
 
 type SyncMessage<M extends Models> = {
@@ -68,5 +59,5 @@ export type SocketEvent<M extends Models> =
   | SocketDisconnected;
 
 export type SocketEventCallback<M extends Models> = (
-  event: SocketEvent<M>
+  event: SocketEvent<M>,
 ) => void;

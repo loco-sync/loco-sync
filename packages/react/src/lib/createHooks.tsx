@@ -255,32 +255,19 @@ const useQueryOneFromStore = <
 ): ModelResult<M, R, ModelName, Selection> | undefined => {
   const watcherRef = useRef<QueryOneWatcher<M, R, ModelName, Selection>>();
   if (!watcherRef.current) {
-    watcherRef.current = new QueryOneWatcher(
-      store,
-      relationshipDefs,
-      modelName,
-      selection,
-    );
+    watcherRef.current = new QueryOneWatcher(store, relationshipDefs);
   }
   const watcher = watcherRef.current;
 
-  const invariantCheck = useRef(false);
-  useEffect(() => {
-    if (invariantCheck.current) {
-      console.warn(
-        'The following args should not change per hook call, and changes are ignored: store, modelName, selection, relationshipDefs',
-      );
-    }
-    invariantCheck.current = true;
-  }, [store, modelName, JSON.stringify(selection), relationshipDefs]);
-
   return useSyncExternalStore(
-    useCallback((cb) => watcher.subscribe(cb, modelId), [modelId]),
+    useCallback(
+      (cb) => watcher.subscribe(cb, modelName, modelId, selection),
+      [modelName, modelId, JSON.stringify(selection)],
+    ),
     useCallback(() => watcher.getSnapshot(), []),
   );
 };
 
-// TODO: I don't think this will work properly if modelFilter changes
 const useQueryManyFromStore = <
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
@@ -295,29 +282,14 @@ const useQueryManyFromStore = <
 ): ModelResult<M, R, ModelName, Selection>[] => {
   const watcherRef = useRef<QueryManyWatcher<M, R, ModelName, Selection>>();
   if (!watcherRef.current) {
-    watcherRef.current = new QueryManyWatcher(
-      store,
-      relationshipDefs,
-      modelName,
-      selection,
-    );
+    watcherRef.current = new QueryManyWatcher(store, relationshipDefs);
   }
   const watcher = watcherRef.current;
 
-  const invariantCheck = useRef(false);
-  useEffect(() => {
-    if (invariantCheck.current) {
-      console.warn(
-        'The following args should not change per hook call, and changes are ignored: store, modelName, selection, relationshipDefs',
-      );
-    }
-    invariantCheck.current = true;
-  }, [store, modelName, JSON.stringify(selection), relationshipDefs]);
-
   return useSyncExternalStore(
     useCallback(
-      (cb) => watcher.subscribe(cb, modelFilter),
-      [JSON.stringify(modelFilter)],
+      (cb) => watcher.subscribe(cb, modelName, modelFilter, selection),
+      [modelName, JSON.stringify(modelFilter), JSON.stringify(selection)],
     ),
     useCallback(() => watcher.getSnapshot(), []),
   );

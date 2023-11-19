@@ -88,7 +88,7 @@ export const fakeNetworkClient: NetworkClient<MS> = {
     ok: true,
     value: { lastSyncId: 0, bootstrap: {} },
   }),
-  initHandshake: async () => {},
+  initHandshake: () => () => {},
   addListener: () => () => {},
 };
 
@@ -129,6 +129,7 @@ export const setup = (bootstrap: BootstrapPayload<M>) => {
           lastSyncId: 0,
         });
       }
+      return () => {};
     },
     addListener: (cb) => {
       listenerId += 1;

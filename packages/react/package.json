@@ -23,12 +23,10 @@
   },
   "dependencies": {
     "use-sync-external-store": "^1.2.0",
-    "uuid": "^9.0.1",
     "@loco-sync/client": "workspace:*"
   },
   "devDependencies": {
-    "@types/use-sync-external-store": "^0.0.4",
-    "@types/uuid": "^9.0.4"
+    "@types/use-sync-external-store": "^0.0.4"
   },
   "peerDependencies": {
     "react": "^16.8.0 || ^17.0.0 || ^18.0.0",

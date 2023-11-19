@@ -21,11 +21,7 @@
     "build:types": "tsc --build",
     "build": "tsup src/index.ts --format cjs,esm && pnpm build:types"
   },
-  "dependencies": {
-    "uuid": "^9.0.1"
-  },
   "devDependencies": {
-    "@types/uuid": "^9.0.4",
     "zod": "^3.22.4"
   }
 }

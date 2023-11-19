@@ -1,4 +1,3 @@
-import { v4 } from 'uuid';
 import type {
   BootstrapPayload,
   Models,
@@ -50,13 +49,12 @@ type CombinedPendingTransaction<MS extends ModelsSpec> = {
 };
 
 export class LocoSyncClient<MS extends ModelsSpec> {
-  #id: string;
   #name: string;
   #networkClient: NetworkClient<MS>;
   #localDbClient: LocalDbClient<MS>;
 
-  #syncListeners: Map<string, SyncListenerCallback<MS['models']>>;
-  #localChangeListeners: Map<string, LocalChangeListenerCallback<MS>>;
+  #syncListeners: Set<SyncListenerCallback<MS['models']>>;
+  #localChangeListeners: Set<LocalChangeListenerCallback<MS>>;
   #lastClientTransactionId: number;
   #pendingTransactionQueue: CombinedPendingTransaction<MS>[];
   #networkClientUnsubscribe?: () => void;
@@ -70,14 +68,13 @@ export class LocoSyncClient<MS extends ModelsSpec> {
   #isClosed: boolean;
 
   constructor(opts: LocoSyncOptions<MS>) {
-    this.#id = v4();
     this.#name = opts.name;
 
     this.#networkClient = opts.networkClient;
     this.#localDbClient = opts.localDbClient;
 
-    this.#localChangeListeners = new Map();
-    this.#syncListeners = new Map();
+    this.#localChangeListeners = new Set();
+    this.#syncListeners = new Set();
     this.#futureSyncActions = [];
     this.#pendingTransactionQueue = [];
 
@@ -94,10 +91,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
 
   get name() {
     return this.#name;
-  }
-
-  get id() {
-    return this.#id;
   }
 
   async init(): Promise<void> {
@@ -188,11 +181,8 @@ export class LocoSyncClient<MS extends ModelsSpec> {
   }
 
   addSyncListener(callback: SyncListenerCallback<MS['models']>): () => void {
-    const listenerId = v4();
-    this.#syncListeners.set(listenerId, callback);
-    return () => {
-      this.#syncListeners.delete(listenerId);
-    };
+    this.#syncListeners.add(callback);
+    return () => this.#syncListeners.delete(callback);
   }
 
   startSync() {
@@ -200,9 +190,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       return;
     }
     this.#syncStarted = true;
-    this.#networkClient.initHandshake({
-      // TODO: Probably pass some auth data here
-    });
+    this.#networkClient.initHandshake();
   }
 
   async close(): Promise<void> {
@@ -239,12 +227,9 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     unsubscribe: () => void;
     initialized: boolean;
   } {
-    const listenerId = v4();
-    this.#localChangeListeners.set(listenerId, callback);
+    this.#localChangeListeners.add(callback);
     return {
-      unsubscribe: () => {
-        this.#localChangeListeners.delete(listenerId);
-      },
+      unsubscribe: () => this.#localChangeListeners.delete(callback),
       initialized: this.#initStatus === 'done',
     };
   }
