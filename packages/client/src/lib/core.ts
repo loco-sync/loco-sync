@@ -69,9 +69,11 @@ export type ModelFilter<
   [K in keyof ModelData<M, ModelName>]?: ModelData<M, ModelName>[K];
 };
 
-export type LocalChanges<M extends Models> = {
-  [ModelName in keyof M & string]?: LocalChange<M, ModelName>[];
-};
+export type LocalChanges<M extends Models> = ReadonlyArray<
+  {
+    [ModelName in keyof M & string]: LocalChange<M, ModelName>;
+  }[keyof M & string]
+>;
 
 export type LocalChange<M extends Models, ModelName extends keyof M & string> =
   | LocalCreate<M, ModelName>

@@ -7,6 +7,7 @@ import {
   many,
   type Models,
   type ModelsParsers,
+  type LocalChanges,
 } from '../index';
 import { z } from 'zod';
 
@@ -112,7 +113,7 @@ describe('Config', () => {
       parsers,
       relationshipDefs,
       mutationDefs: {
-        getChanges: () => ({}),
+        getChanges: () => [],
       },
     }).toMatchTypeOf<ModelsConfig<MS>>();
   });
@@ -136,5 +137,44 @@ describe('Model parsers', () => {
     expectTypeOf<(typeof parsers)[keyof typeof parsers]>().toEqualTypeOf<
       ZodFromParser<M, typeof parsers, keyof typeof parsers, 'create'>
     >();
+  });
+});
+
+describe('Local Changes', () => {
+  test('Empty', () => {
+    const localChanges = [] as const;
+    expectTypeOf<typeof localChanges>().toMatchTypeOf<LocalChanges<M>>();
+  });
+
+  test('Basic', () => {
+    const localChanges = [
+      {
+        modelName: 'Post',
+        modelId: '1',
+        action: 'create',
+        data: {
+          id: '1',
+          title: 'Hello',
+          body: 'World',
+          authorId: '1',
+        },
+      },
+    ] as const;
+    expectTypeOf<typeof localChanges>().toMatchTypeOf<LocalChanges<M>>();
+  });
+
+  test('Model data mismatch', () => {
+    const localChanges = [
+      {
+        modelName: 'Post',
+        modelId: '1',
+        action: 'create',
+        data: {
+          id: '1',
+          name: '',
+        },
+      },
+    ] as const;
+    expectTypeOf<typeof localChanges>().not.toMatchTypeOf<LocalChanges<M>>();
   });
 });

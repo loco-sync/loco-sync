@@ -25,18 +25,16 @@ describe('LocoSyncReactStore.processMessage()', () => {
     store.processMessage({
       type: 'startTransaction',
       transactionId: 1,
-      changes: {
-        Post: [
-          {
-            modelName: 'Post',
-            modelId: '1',
-            action: 'update',
-            data: {
-              title: 'new title',
-            },
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: '1',
+          action: 'update',
+          data: {
+            title: 'new title',
           },
-        ],
-      },
+        },
+      ],
     });
     expect(store.getOne('Post', '1')).toEqual({
       id: '1',
@@ -62,18 +60,16 @@ describe('LocoSyncReactStore.processMessage()', () => {
     store.processMessage({
       type: 'startTransaction',
       transactionId: 2,
-      changes: {
-        Post: [
-          {
-            modelName: 'Post',
-            modelId: '1',
-            action: 'update',
-            data: {
-              body: 'new body',
-            },
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: '1',
+          action: 'update',
+          data: {
+            body: 'new body',
           },
-        ],
-      },
+        },
+      ],
     });
     expect(store.getOne('Post', '1')).toEqual({
       id: '1',
@@ -137,18 +133,16 @@ describe('LocoSyncReactStore.processMessage()', () => {
     store.processMessage({
       type: 'startTransaction',
       transactionId: 3,
-      changes: {
-        Post: [
-          {
-            modelName: 'Post',
-            modelId: '1',
-            action: 'update',
-            data: {
-              title: 'newer title',
-            },
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: '1',
+          action: 'update',
+          data: {
+            title: 'newer title',
           },
-        ],
-      },
+        },
+      ],
     });
     expect(store.getOne('Post', '1')).toEqual({
       id: '1',
@@ -200,18 +194,16 @@ describe('LocoSyncReactStore.processMessage()', () => {
     store.processMessage({
       type: 'startTransaction',
       transactionId: 4,
-      changes: {
-        Post: [
-          {
-            modelName: 'Post',
-            modelId: '1',
-            action: 'update',
-            data: {
-              body: 'newer body',
-            },
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: '1',
+          action: 'update',
+          data: {
+            body: 'newer body',
           },
-        ],
-      },
+        },
+      ],
     });
     expect(store.getOne('Post', '1')).toEqual({
       id: '1',

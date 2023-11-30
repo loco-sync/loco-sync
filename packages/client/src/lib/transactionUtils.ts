@@ -310,15 +310,7 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
   const errorMessages: string[] = [];
   const modelChangeSnapshots: ModelChangeSnapshots<M, keyof M & string>[] = [];
 
-  const flatChanges: LocalChange<M, keyof M & string>[] = [];
-  for (const modelName in changes) {
-    const modelChanges = changes[modelName];
-    if (modelChanges) {
-      flatChanges.push(...modelChanges);
-    }
-  }
-
-  for (const change of flatChanges) {
+  for (const change of changes) {
     const confirmedModelData = getData(change.modelName, change.modelId);
 
     const pendingModelChangeSnapshots = modelChangeSnapshots.find(
