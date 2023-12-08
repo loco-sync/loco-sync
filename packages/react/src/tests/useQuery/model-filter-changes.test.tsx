@@ -6,7 +6,7 @@ import { setup } from '../utils';
 
 test('Component updates after rendering with a new modelId passed to useQueryOne', async () => {
   const { rerender } = render(
-    <Provider notHydratedFallback={null}>
+    <Provider notHydratedFallback={null} client={client}>
       <Test authorId="1" />
     </Provider>,
   );
@@ -17,7 +17,7 @@ test('Component updates after rendering with a new modelId passed to useQueryOne
   expect(authorSpan).toHaveTextContent('Author:1 has 1 post(s)');
 
   rerender(
-    <Provider notHydratedFallback={null}>
+    <Provider notHydratedFallback={null} client={client}>
       <Test authorId="2" />
     </Provider>,
   );
@@ -60,8 +60,8 @@ const bootstrap = {
   ],
 };
 
-const { config, syncClient } = setup(bootstrap);
-const { Provider, useQuery } = createLocoSyncReact(syncClient, config);
+const { config, client } = setup(bootstrap);
+const { Provider, useQuery } = createLocoSyncReact(config);
 
 const Test = ({ authorId }: { authorId: string }) => {
   const data = useQuery('Post', {

@@ -9,7 +9,7 @@ test('Update moves selected entity between parts of selection', async () => {
   const user = userEvent.setup();
 
   render(
-    <Provider notHydratedFallback={null}>
+    <Provider notHydratedFallback={null} client={client}>
       <Test1 />
     </Provider>,
   );
@@ -63,8 +63,8 @@ const bootstrap = {
   ],
 };
 
-const { config, syncClient, sendSocketEvent } = setup(bootstrap);
-const { Provider, useQueryOne } = createLocoSyncReact(syncClient, config);
+const { config, client, sendSocketEvent } = setup(bootstrap);
+const { Provider, useQueryOne } = createLocoSyncReact(config);
 
 const Test1 = () => {
   const data = useQueryOne('Group', '1', {

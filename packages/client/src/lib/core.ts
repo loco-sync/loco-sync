@@ -29,8 +29,6 @@ export type ModelsConfig<MS extends AnyModelsSpec> = {
   mutationDefs?: MutationDefs<MS>;
 };
 
-export type AnyModelsConfig = ModelsConfig<AnyModelsSpec>;
-
 export type ModelsParsers<M extends Models> = {
   [ModelName in keyof M & string]: z.ZodType<{ id: string }>;
 };
@@ -152,4 +150,10 @@ export function getMutationLocalChanges<MS extends ModelsSpec>(
     // Based on config.mutationDefs types, this must be LocalChanges
     return args as LocalChanges<MS['models']>;
   }
+}
+
+export function createConfig<MS extends ModelsSpec>(
+  config: ModelsConfig<MS>,
+): ModelsConfig<MS> {
+  return config;
 }

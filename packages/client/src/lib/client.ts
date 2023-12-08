@@ -9,7 +9,6 @@ import type { NetworkClient } from './network';
 import type { LocalDbClient } from './local';
 
 type LocoSyncOptions<MS extends ModelsSpec> = {
-  name: string;
   networkClient: NetworkClient<MS>;
   localDbClient: LocalDbClient<MS>;
 };
@@ -49,7 +48,6 @@ type CombinedPendingTransaction<MS extends ModelsSpec> = {
 };
 
 export class LocoSyncClient<MS extends ModelsSpec> {
-  #name: string;
   #networkClient: NetworkClient<MS>;
   #localDbClient: LocalDbClient<MS>;
 
@@ -68,8 +66,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
   #isClosed: boolean;
 
   constructor(opts: LocoSyncOptions<MS>) {
-    this.#name = opts.name;
-
     this.#networkClient = opts.networkClient;
     this.#localDbClient = opts.localDbClient;
 
@@ -87,10 +83,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#catchUpSyncCompleted = false;
 
     this.init();
-  }
-
-  get name() {
-    return this.#name;
   }
 
   async init(): Promise<void> {

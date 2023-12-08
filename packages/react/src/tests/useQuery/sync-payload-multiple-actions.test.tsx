@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { StrictMode } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
@@ -9,7 +9,7 @@ test('sync payload with multiple actions for one model', async () => {
   const user = userEvent.setup();
 
   render(
-    <Provider notHydratedFallback={null}>
+    <Provider notHydratedFallback={null} client={client}>
       <Test1 />
     </Provider>,
   );
@@ -34,8 +34,8 @@ const bootstrap = {
   ],
 };
 
-const { config, syncClient, sendSocketEvent } = setup(bootstrap);
-const { Provider, useQueryOne } = createLocoSyncReact(syncClient, config);
+const { config, client, sendSocketEvent } = setup(bootstrap);
+const { Provider, useQueryOne } = createLocoSyncReact(config);
 
 const Test1 = () => {
   const data = useQueryOne('Post', '1');

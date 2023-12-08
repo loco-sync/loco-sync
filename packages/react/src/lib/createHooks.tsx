@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useRef,
   useState,
+  useMemo,
 } from 'react';
 import { LocoSyncClient, getMutationLocalChanges } from '@loco-sync/client';
 import type {
@@ -23,17 +24,18 @@ import { type LocoSyncReactStore, createLocoSyncReactStore } from './store';
 import { QueryManyWatcher, QueryOneWatcher } from './watchers';
 import { useSyncExternalStore } from 'use-sync-external-store/shim';
 
-export interface LocoSyncReactProviderProps {
+export interface LocoSyncReactProviderProps<MS extends ModelsSpec> {
+  client: LocoSyncClient<MS>;
   notHydratedFallback?: ReactNode;
   children: ReactNode;
 }
 
-export type LocoSyncReactProvider = (
-  props: LocoSyncReactProviderProps,
+export type LocoSyncReactProvider<MS extends ModelsSpec> = (
+  props: LocoSyncReactProviderProps<MS>,
 ) => JSX.Element;
 
 export interface LocoSyncReact<MS extends ModelsSpec> {
-  Provider: LocoSyncReactProvider;
+  Provider: LocoSyncReactProvider<MS>;
   useQuery: {
     <ModelName extends keyof MS['models'] & string>(
       modelName: ModelName,
@@ -100,32 +102,40 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
   useIsHydrated: () => boolean;
 }
 
+type InternalContext<MS extends ModelsSpec> = {
+  isHydrated: boolean;
+  store: LocoSyncReactStore<MS['models']> | undefined;
+  client: LocoSyncClient<MS> | undefined;
+};
+
 export const createLocoSyncReact = <MS extends ModelsSpec>(
-  syncClient: LocoSyncClient<MS>,
   config: ModelsConfig<MS>,
 ): LocoSyncReact<MS> => {
   type M = MS['models'];
   type R = ExtractModelsRelationshipDefs<MS>;
   const relationshipDefs: R = config.relationshipDefs ?? {};
 
-  const store = createLocoSyncReactStore<M>();
-  const context = createContext({
+  const context = createContext<InternalContext<MS>>({
     isHydrated: false,
+    store: undefined,
+    client: undefined,
   });
   const useContext = () => React.useContext(context);
 
-  const Provider: LocoSyncReactProvider = (props) => {
+  const Provider: LocoSyncReactProvider<MS> = (props) => {
     const [isHydrated, setIsHydrated] = useState(false);
+    const client = props.client;
+    const store = useMemo(() => createLocoSyncReactStore(), [client]);
 
     useEffect(() => {
       let syncUnsubscribe: (() => void) | undefined;
       let localChangeUnsubscribe: (() => void) | undefined;
       (async () => {
-        syncUnsubscribe = syncClient.addSyncListener((lastSyncId, sync) => {
+        syncUnsubscribe = client.addSyncListener((lastSyncId, sync) => {
           store.processMessage({ type: 'sync', lastSyncId, sync });
         });
 
-        const { unsubscribe, initialized } = syncClient.addLocalChangeListener(
+        const { unsubscribe, initialized } = client.addLocalChangeListener(
           (payload) => {
             if (payload.type === 'start') {
               store.processMessage({
@@ -147,21 +157,23 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
             } else if (payload.type === 'bootstrap') {
               store.loadBootstrap(payload.bootstrap);
               setIsHydrated(true);
-              syncClient.startSync();
+              client.startSync();
             }
           },
         );
 
         localChangeUnsubscribe = unsubscribe;
         if (initialized) {
-          const bootstrap = await syncClient.loadLocalBootstrap();
+          const bootstrap = await client.loadLocalBootstrap();
           store.loadBootstrap(bootstrap);
           setIsHydrated(true);
-          syncClient.startSync();
+          client.startSync();
         }
       })();
 
       return () => {
+        // TODO: Any cleanup needed on "store"?
+        setIsHydrated(false);
         if (syncUnsubscribe) {
           syncUnsubscribe();
         }
@@ -169,7 +181,7 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
           localChangeUnsubscribe();
         }
       };
-    }, []);
+    }, [client, store]);
 
     if (props.notHydratedFallback && !isHydrated) {
       return <>{props.notHydratedFallback}</>;
@@ -179,6 +191,8 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
       <context.Provider
         value={{
           isHydrated,
+          store,
+          client,
         }}
       >
         {props.children}
@@ -194,6 +208,10 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     modelFilter?: ModelFilter<M, ModelName>,
     selection?: Selection,
   ): ModelResult<M, R, ModelName, Selection>[] => {
+    const store = useContext().store;
+    if (!store) {
+      throw new Error('LocoSync context provider not found.');
+    }
     return useQueryManyFromStore(
       store,
       relationshipDefs,
@@ -211,6 +229,10 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     modelId: string,
     selection?: Selection,
   ): ModelResult<M, R, ModelName, Selection> | undefined => {
+    const store = useContext().store;
+    if (!store) {
+      throw new Error('LocoSync context provider not found.');
+    }
     return useQueryOneFromStore(
       store,
       relationshipDefs,
@@ -221,15 +243,21 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
   };
 
   const useMutation: LocoSyncReact<MS>['useMutation'] = () => {
-    const mutationFn: MutationFn<MS> = useCallback((args) => {
-      syncClient.addMutation(args);
-    }, []);
+    const client = useContext().client;
+    if (!client) {
+      throw new Error('LocoSync context provider not found.');
+    }
+    const mutationFn: MutationFn<MS> = useCallback(
+      (args) => {
+        client.addMutation(args);
+      },
+      [client],
+    );
     return [mutationFn];
   };
 
   const useIsHydrated = () => {
-    const context = useContext();
-    return context.isHydrated;
+    return useContext().isHydrated;
   };
 
   return {
@@ -254,7 +282,12 @@ const useQueryOneFromStore = <
   selection?: Selection,
 ): ModelResult<M, R, ModelName, Selection> | undefined => {
   const watcherRef = useRef<QueryOneWatcher<M, R, ModelName, Selection>>();
-  if (!watcherRef.current) {
+
+  if (
+    !watcherRef.current ||
+    watcherRef.current.store !== store ||
+    watcherRef.current.relationshipDefs !== relationshipDefs
+  ) {
     watcherRef.current = new QueryOneWatcher(store, relationshipDefs);
   }
   const watcher = watcherRef.current;
@@ -262,9 +295,9 @@ const useQueryOneFromStore = <
   return useSyncExternalStore(
     useCallback(
       (cb) => watcher.subscribe(cb, modelName, modelId, selection),
-      [modelName, modelId, JSON.stringify(selection)],
+      [watcher, modelName, modelId, JSON.stringify(selection)],
     ),
-    useCallback(() => watcher.getSnapshot(), []),
+    useCallback(() => watcher.getSnapshot(), [watcher]),
   );
 };
 
@@ -281,7 +314,12 @@ const useQueryManyFromStore = <
   selection?: Selection,
 ): ModelResult<M, R, ModelName, Selection>[] => {
   const watcherRef = useRef<QueryManyWatcher<M, R, ModelName, Selection>>();
-  if (!watcherRef.current) {
+
+  if (
+    !watcherRef.current ||
+    watcherRef.current.store !== store ||
+    watcherRef.current.relationshipDefs !== relationshipDefs
+  ) {
     watcherRef.current = new QueryManyWatcher(store, relationshipDefs);
   }
   const watcher = watcherRef.current;
@@ -289,8 +327,13 @@ const useQueryManyFromStore = <
   return useSyncExternalStore(
     useCallback(
       (cb) => watcher.subscribe(cb, modelName, modelFilter, selection),
-      [modelName, JSON.stringify(modelFilter), JSON.stringify(selection)],
+      [
+        watcher,
+        modelName,
+        JSON.stringify(modelFilter),
+        JSON.stringify(selection),
+      ],
     ),
-    useCallback(() => watcher.getSnapshot(), []),
+    useCallback(() => watcher.getSnapshot(), [watcher]),
   );
 };

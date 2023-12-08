@@ -1,5 +1,9 @@
 import { expectTypeOf } from 'vitest';
-import { type ModelsConfig, LocoSyncClient } from '@loco-sync/client';
+import {
+  // type ModelsConfig,
+  // LocoSyncClient,
+  createConfig,
+} from '@loco-sync/client';
 import { type LocoSyncReact, createLocoSyncReact } from '../index';
 import {
   type MS,
@@ -11,16 +15,12 @@ import {
 
 describe('Create types', () => {
   test('Basic create', () => {
-    const config = {
+    const config = createConfig<MS>({
       modelDefs,
       relationshipDefs,
-    } satisfies ModelsConfig<MS>;
-    const syncClient = new LocoSyncClient({
-      name: 'test',
-      networkClient: fakeNetworkClient,
-      localDbClient: fakeLocalDbClient,
     });
-    const reactClient = createLocoSyncReact(syncClient, config);
+
+    const reactClient = createLocoSyncReact(config);
     expectTypeOf(reactClient).toMatchTypeOf<LocoSyncReact<MS>>();
   });
 });

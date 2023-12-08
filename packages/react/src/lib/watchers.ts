@@ -163,8 +163,6 @@ export class QueryManyWatcher<
   ModelName extends keyof M & string,
   Selection extends ModelRelationshipSelection<M, R, ModelName>,
 > {
-  #store: LocoSyncReactStore<M>;
-  #relationshipDefs: R;
   #listeners: Set<() => void>;
 
   #current:
@@ -178,10 +176,10 @@ export class QueryManyWatcher<
     | undefined;
   #result: ModelResult<M, R, ModelName, Selection>[];
 
-  constructor(store: LocoSyncReactStore<M>, relationshipDefs: R) {
-    this.#store = store;
-    this.#relationshipDefs = relationshipDefs;
-
+  constructor(
+    public readonly store: LocoSyncReactStore<M>,
+    public readonly relationshipDefs: R,
+  ) {
     this.#listeners = new Set();
     this.#result = [];
   }
@@ -191,8 +189,8 @@ export class QueryManyWatcher<
     modelFilter: ModelFilter<M, ModelName> | undefined,
     selection: Selection | undefined,
   ) {
-    const baseModelData = this.#store.getMany(modelName, modelFilter);
-    const baseUnsubscriber = this.#store.subMany(modelName, modelFilter, () =>
+    const baseModelData = this.store.getMany(modelName, modelFilter);
+    const baseUnsubscriber = this.store.subMany(modelName, modelFilter, () =>
       this.onChange(),
     );
     const visitResults: VisitResult<M, R, ModelName, Selection>[] = [];
@@ -201,8 +199,8 @@ export class QueryManyWatcher<
         modelName,
         data,
         selection,
-        this.#relationshipDefs,
-        this.#store,
+        this.relationshipDefs,
+        this.store,
         () => this.onChange(),
       );
       if (visitResult) {
@@ -270,8 +268,6 @@ export class QueryOneWatcher<
   ModelName extends keyof M & string,
   Selection extends ModelRelationshipSelection<M, R, ModelName>,
 > {
-  #store: LocoSyncReactStore<M>;
-  #relationshipDefs: R;
   #listeners: Set<() => void>;
 
   #current:
@@ -285,10 +281,10 @@ export class QueryOneWatcher<
     | undefined;
   #result: ModelResult<M, R, ModelName, Selection> | undefined;
 
-  constructor(store: LocoSyncReactStore<M>, relationshipDefs: R) {
-    this.#store = store;
-    this.#relationshipDefs = relationshipDefs;
-
+  constructor(
+    public readonly store: LocoSyncReactStore<M>,
+    public readonly relationshipDefs: R,
+  ) {
     this.#listeners = new Set();
     this.#result = undefined;
   }
@@ -298,8 +294,8 @@ export class QueryOneWatcher<
     modelId: string,
     selection: Selection | undefined,
   ) {
-    const baseModelData = this.#store.getOne(modelName, modelId);
-    const baseUnsubscriber = this.#store.subOne(modelName, modelId, () =>
+    const baseModelData = this.store.getOne(modelName, modelId);
+    const baseUnsubscriber = this.store.subOne(modelName, modelId, () =>
       this.onChange(),
     );
     const visitResult =
@@ -308,8 +304,8 @@ export class QueryOneWatcher<
         modelName,
         baseModelData,
         selection,
-        this.#relationshipDefs,
-        this.#store,
+        this.relationshipDefs,
+        this.store,
         () => this.onChange(),
       );
 

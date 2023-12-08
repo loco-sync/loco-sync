@@ -35,7 +35,7 @@ type CreateLocoSyncIdbClientOptions = {
 // TODO: Figure out what to do on version changes. Seems like version might need to be fetched from backend?
 // TODO: What durability level to use on transactions? Don't want issues with processing sync actions twice.
 export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
-  name: string,
+  namespace: string,
   config: ModelsConfig<MS>,
   options?: CreateLocoSyncIdbClientOptions,
 ): LocalDbClient<MS> => {
@@ -44,7 +44,7 @@ export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
   let _db: IDBPDatabase | undefined = undefined;
   // TODO: What version number?
   const version = 1;
-  const dbPromise = openDB(`loco-sync_${name}`, version, {
+  const dbPromise = openDB(namespace, version, {
     upgrade(db, oldVersion, newVersion, transaction, event) {
       for (const modelName in config.modelDefs) {
         db.createObjectStore(modelName, {

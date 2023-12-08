@@ -10,6 +10,7 @@ import {
   type ModelsConfig,
   type BootstrapPayload,
   type SocketEvent,
+  createConfig,
 } from '@loco-sync/client';
 
 type M = {
@@ -102,10 +103,10 @@ export const fakeLocalDbClient: LocalDbClient<MS> = {
 };
 
 export const setup = (bootstrap: BootstrapPayload<M>) => {
-  const config = {
+  const config = createConfig<MS>({
     modelDefs,
     relationshipDefs,
-  } satisfies ModelsConfig<MS>;
+  }); // satisfies ModelsConfig<MS>;
 
   const listeners = new Map<string, SocketEventCallback<MS['models']>>();
   let listenerId = 0;
@@ -148,8 +149,7 @@ export const setup = (bootstrap: BootstrapPayload<M>) => {
     },
   };
 
-  const syncClient = new LocoSyncClient({
-    name: 'test',
+  const client = new LocoSyncClient({
     networkClient,
     localDbClient,
   });
@@ -161,7 +161,7 @@ export const setup = (bootstrap: BootstrapPayload<M>) => {
   };
 
   return {
-    syncClient,
+    client,
     config,
     sendSocketEvent,
   };
