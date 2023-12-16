@@ -34,7 +34,7 @@ const bootstrap = {
   ],
 };
 
-const { config, client, sendSocketEvent } = setup(bootstrap);
+const { config, client, sendMessage } = setup(bootstrap);
 const { Provider, useQueryOne } = createLocoSyncReact(config);
 
 const Test1 = () => {
@@ -53,7 +53,7 @@ const Test1 = () => {
       <button
         onClick={() => {
           // Normally user, but this is the easiest repro for sync actions coming from server for now
-          sendSocketEvent({
+          sendMessage({
             type: 'sync',
             lastSyncId: 3,
             sync: [

@@ -1,6 +1,6 @@
 {
   "name": "@loco-sync/react",
-  "version": "0.0.1-beta.7",
+  "version": "0.0.1-beta.8",
   "description": "React hooks for LocoSync, a sync engine for local-first applications",
   "author": "Kevin Kusch",
   "license": "MIT",
@@ -22,8 +22,8 @@
     "build": "tsup src/index.ts --format cjs,esm && pnpm build:types"
   },
   "dependencies": {
-    "use-sync-external-store": "^1.2.0",
-    "@loco-sync/client": "workspace:*"
+    "@loco-sync/client": "workspace:*",
+    "use-sync-external-store": "^1.2.0"
   },
   "devDependencies": {
     "@types/use-sync-external-store": "^0.0.4"

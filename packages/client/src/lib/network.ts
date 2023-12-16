@@ -7,18 +7,15 @@ import type {
 } from './core';
 import type { Result } from './typeUtils';
 
-type Unsubscribe = () => void;
-
 // TODO: Could include some function here to check whether we're online / a callback to detect if we change online/offline?
-export interface NetworkClient<MS extends ModelsSpec> {
+export interface NetworkAdapter<MS extends ModelsSpec> {
   sendTransaction(args: MutationArgs<MS>): Promise<SendTransactionResult>;
   deltaSync(
     fromSyncId: number,
     toSyncId: number,
   ): Promise<DeltaSyncResult<MS['models']>>;
   loadBootstrap(): Promise<LoadBootstrapResult<MS['models']>>;
-  initHandshake(): Unsubscribe | undefined;
-  addListener(callback: SocketEventCallback<MS['models']>): Unsubscribe;
+  initSync(listener: NetworkMessageListener<MS['models']>): () => void;
 }
 
 type NetworkErrorType = 'auth' | 'network' | 'server';
@@ -49,15 +46,15 @@ type SyncMessage<M extends Models> = {
   sync: SyncAction<M, keyof M & string>[];
 };
 
-type SocketDisconnected = {
+type Disconnected = {
   type: 'disconnected';
 };
 
-export type SocketEvent<M extends Models> =
+export type NetworkMessage<M extends Models> =
   | SyncMessage<M>
   | HandshakeResponse
-  | SocketDisconnected;
+  | Disconnected;
 
-export type SocketEventCallback<M extends Models> = (
-  event: SocketEvent<M>,
+export type NetworkMessageListener<M extends Models> = (
+  event: NetworkMessage<M>,
 ) => void;

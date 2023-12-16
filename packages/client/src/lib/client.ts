@@ -5,33 +5,33 @@ import type {
   ModelsSpec,
   MutationArgs,
 } from './core';
-import type { NetworkClient } from './network';
-import type { LocalDbClient } from './local';
+import type { NetworkAdapter } from './network';
+import type { StorageAdapter } from './storage';
 
-type LocoSyncOptions<MS extends ModelsSpec> = {
-  networkClient: NetworkClient<MS>;
-  localDbClient: LocalDbClient<MS>;
+export type LocoSyncOptions<MS extends ModelsSpec> = {
+  network: NetworkAdapter<MS>;
+  storage: StorageAdapter<MS>;
 };
 
-type SyncListenerCallback<M extends Models> = (
-  lastSyncId: number,
-  sync: SyncAction<M, keyof M & string>[],
-) => void;
-
-type LocalChangeListenerCallback<MS extends ModelsSpec> = (
+export type LocalSyncClientListener<MS extends ModelsSpec> = (
   args:
     | {
-        type: 'start';
+        type: 'sync';
+        lastSyncId: number;
+        sync: SyncAction<MS['models'], keyof MS['models'] & string>[];
+      }
+    | {
+        type: 'startTransaction';
         clientTransactionId: number;
         args: MutationArgs<MS>;
       }
     | {
-        type: 'commit';
+        type: 'commitTransaction';
         clientTransactionId: number;
         lastSyncId: number;
       }
     | {
-        type: 'rollback';
+        type: 'rollbackTransaction';
         clientTransactionId: number;
       }
     | {
@@ -40,100 +40,95 @@ type LocalChangeListenerCallback<MS extends ModelsSpec> = (
       },
 ) => void;
 
-// Only used in this file, other components use LocalDbPendingTransaction or ClientPendingTransaction
 type CombinedPendingTransaction<MS extends ModelsSpec> = {
   clientTransactionId: number;
-  localDbTransactionId: number;
+  storageTransactionId: number;
   args: MutationArgs<MS>;
 };
 
-export class LocoSyncClient<MS extends ModelsSpec> {
-  #networkClient: NetworkClient<MS>;
-  #localDbClient: LocalDbClient<MS>;
+export type LocoSyncClientStatus =
+  | 'ready'
+  | 'initializing'
+  | 'running'
+  | 'failed';
 
-  #syncListeners: Set<SyncListenerCallback<MS['models']>>;
-  #localChangeListeners: Set<LocalChangeListenerCallback<MS>>;
+export class LocoSyncClient<MS extends ModelsSpec> {
+  #network: NetworkAdapter<MS>;
+  #storage: StorageAdapter<MS>;
+
+  #listeners: Set<LocalSyncClientListener<MS>>;
   #lastClientTransactionId: number;
+  #networkUnsubscribe?: () => void;
   #pendingTransactionQueue: CombinedPendingTransaction<MS>[];
-  #networkClientUnsubscribe?: () => void;
   #futureSyncActions: SyncAction<MS['models'], keyof MS['models'] & string>[];
+
   #catchUpSyncCompleted: boolean;
   #lastSyncId: number;
   #pushInFlight: boolean;
-  #syncStarted: boolean;
 
-  #initStatus: 'ready' | 'running' | 'done' | 'failed';
-  #isClosed: boolean;
+  #status: LocoSyncClientStatus;
 
   constructor(opts: LocoSyncOptions<MS>) {
-    this.#networkClient = opts.networkClient;
-    this.#localDbClient = opts.localDbClient;
+    this.#network = opts.network;
+    this.#storage = opts.storage;
 
-    this.#localChangeListeners = new Set();
-    this.#syncListeners = new Set();
+    this.#listeners = new Set();
     this.#futureSyncActions = [];
     this.#pendingTransactionQueue = [];
 
     this.#lastClientTransactionId = 0;
     this.#lastSyncId = 0;
-    this.#initStatus = 'ready';
-    this.#syncStarted = false;
-    this.#isClosed = false;
+    this.#status = 'ready';
     this.#pushInFlight = false;
     this.#catchUpSyncCompleted = false;
-
-    this.init();
   }
 
-  async init(): Promise<void> {
-    if (this.#initStatus !== 'ready') {
-      console.error('Client.init() has already been called');
+  // TODO: Should this return a result of some sort?
+  async start(): Promise<void> {
+    const status = this.#status;
+    if (status !== 'ready') {
+      console.error(
+        `LocoSyncClient has status "${status}", not "ready". Cannot start`,
+      );
       return;
     }
-    if (this.#isClosed) {
-      console.error('Client.init() cannot be called on closed client');
-      return;
-    }
-    this.#initStatus = 'running';
+    this.#status = 'initializing';
 
-    const result =
-      await this.#localDbClient.getMetadataAndPendingTransactions();
+    const result = await this.#storage.getMetadataAndPendingTransactions();
 
     if (result) {
       // DB Exists, so add pending transactions to queue and set lastSyncId
       const { metadata, pendingTransactions } = result;
       this.#lastSyncId = metadata.lastSyncId;
 
-      if (this.#localChangeListeners.size > 0) {
-        const bootstrap = await this.loadLocalBootstrap();
-        for (const cb of this.#localChangeListeners.values()) {
-          cb({
-            type: 'bootstrap',
-            bootstrap,
-          });
-        }
+      const bootstrap = await this.#storage.loadBootstrap();
+      for (const cb of this.#listeners.values()) {
+        cb({
+          type: 'bootstrap',
+          bootstrap,
+        });
       }
 
       const combinedPendingTransactions: CombinedPendingTransaction<MS>[] = [];
-      for (const { args, id } of pendingTransactions) {
+      for (const { args, id: storageTransactionId } of pendingTransactions) {
         const clientTransactionId = ++this.#lastClientTransactionId;
         combinedPendingTransactions.push({
           clientTransactionId,
-          localDbTransactionId: id,
+          storageTransactionId,
           args,
         });
       }
       this.addPendingTransactionsToQueue(combinedPendingTransactions);
     } else {
-      const bootstrapResult = await this.#networkClient.loadBootstrap();
+      const bootstrapResult = await this.#network.loadBootstrap();
       if (bootstrapResult.ok) {
-        await this.#localDbClient.saveBootstrap(
+        await this.#storage.saveBootstrap(
           bootstrapResult.value.bootstrap,
           bootstrapResult.value.lastSyncId,
         );
         this.#lastSyncId = bootstrapResult.value.lastSyncId;
 
-        for (const cb of this.#localChangeListeners.values()) {
+        for (const cb of this.#listeners.values()) {
           cb({
             type: 'bootstrap',
             bootstrap: bootstrapResult.value.bootstrap,
@@ -141,122 +136,95 @@ export class LocoSyncClient<MS extends ModelsSpec> {
         }
       } else {
         // TODO: Should probably retry in this case
-        this.#initStatus = 'failed';
+        this.#status = 'failed';
         return;
       }
     }
 
-    this.#networkClientUnsubscribe = this.#networkClient.addListener(
-      async (response) => {
-        if (response.type === 'handshake') {
-          await this.deltaSync(this.#lastSyncId, response.lastSyncId);
-        } else if (response.type === 'sync') {
-          const { lastSyncId, sync } = response;
-          if (this.#catchUpSyncCompleted) {
-            // TODO: Does ordering or sending sync events to memory vs. local db matter?
-            // local db seems safer, but potentially slower?
-            for (const cb of this.#syncListeners.values()) {
-              cb(lastSyncId, sync);
-            }
-            await this.#localDbClient.applySyncActions(lastSyncId, sync);
-          } else {
-            this.#futureSyncActions.push(...sync);
+    this.#networkUnsubscribe = this.#network.initSync(async (response) => {
+      if (response.type === 'handshake') {
+        await this.deltaSync(this.#lastSyncId, response.lastSyncId);
+      } else if (response.type === 'sync') {
+        const { lastSyncId, sync } = response;
+        if (this.#catchUpSyncCompleted) {
+          // TODO: Does ordering of sending sync events to memory vs. storage matter?
+          // storage first seems safer, but also slower?
+          for (const cb of this.#listeners.values()) {
+            cb({ type: 'sync', lastSyncId, sync });
           }
-        } else if (response.type === 'disconnected') {
-          this.#catchUpSyncCompleted = false;
-          this.#futureSyncActions = [];
+          await this.#storage.applySyncActions(lastSyncId, sync);
+        } else {
+          this.#futureSyncActions.push(...sync);
         }
-      },
-    );
+      } else if (response.type === 'disconnected') {
+        this.#catchUpSyncCompleted = false;
+        this.#futureSyncActions = [];
+      }
+    });
 
-    this.#initStatus = 'done';
+    this.#status = 'running';
   }
 
-  addSyncListener(callback: SyncListenerCallback<MS['models']>): () => void {
-    this.#syncListeners.add(callback);
-    return () => this.#syncListeners.delete(callback);
+  addListener(listener: LocalSyncClientListener<MS>): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
-  startSync() {
-    if (this.#syncStarted) {
+  stop() {
+    if (this.#status !== 'running') {
       return;
     }
-    this.#syncStarted = true;
-    this.#networkClient.initHandshake();
-  }
+    this.#status = 'ready';
 
-  async close(): Promise<void> {
-    if (this.#isClosed) {
-      return;
-    }
-    this.#isClosed = true;
-
+    // TODO: Stop in-flight requests
     // TODO: What else needs to be cleaned up?
-    if (this.#networkClientUnsubscribe) {
-      this.#networkClientUnsubscribe();
+
+    if (this.#networkUnsubscribe) {
+      this.#networkUnsubscribe();
     }
   }
 
-  isSyncing() {
-    return this.#pendingTransactionQueue.length > 0;
-  }
+  // isSyncing() {
+  //   return this.#pendingTransactionQueue.length > 0;
+  // }
 
-  // TODO: Implement, probably based on some analysis of requests. Or maybe this just forwards some events from the request?
-  // Could also provide API to let users determine this for themselves, maybe based on stream of request attempts + times + outcomes
-  // Or maybe just forward this to the NetworkClient, which should implement via checking e.g. websocket state
-  isOnline() {
-    return false;
-  }
-
-  /**
-   *
-   * @param callback called with new local change events
-   * @returns
-   * unsubscribe: method to remove the callback fn as a listener.
-   * initialized: true if init is done (and therefore a bootstrap event will not be emitted), false otherwise
-   */
-  addLocalChangeListener(callback: LocalChangeListenerCallback<MS>): {
-    unsubscribe: () => void;
-    initialized: boolean;
-  } {
-    this.#localChangeListeners.add(callback);
-    return {
-      unsubscribe: () => this.#localChangeListeners.delete(callback),
-      initialized: this.#initStatus === 'done',
-    };
-  }
+  // // TODO: Implement, probably based on some analysis of requests. Or maybe this just forwards some events from the request?
+  // // Could also provide API to let users determine this for themselves, maybe based on stream of request attempts + times + outcomes
+  // // Or maybe just forward this to the NetworkClient, which should implement via checking e.g. websocket state
+  // isOnline() {
+  //   return false;
+  // }
 
   async addMutation(args: MutationArgs<MS>) {
-    if (this.#isClosed) {
-      console.error('Client is closed, cannot add new transactions');
+    const status = this.#status;
+    if (status !== 'running') {
+      console.error(
+        `LocoSyncClient has status "${status}", not "running". Cannot add new transactions.`,
+      );
       return;
     }
 
     this.#lastClientTransactionId += 1;
     const clientTransactionId = this.#lastClientTransactionId;
 
-    for (const cb of this.#localChangeListeners.values()) {
+    for (const cb of this.#listeners.values()) {
       cb({
-        type: 'start',
+        type: 'startTransaction',
         clientTransactionId,
         args,
       });
     }
 
-    const localDbTransactionId =
-      await this.#localDbClient.createPendingTransaction(args);
+    const storageTransactionId =
+      await this.#storage.createPendingTransaction(args);
 
     this.addPendingTransactionsToQueue([
       {
         clientTransactionId,
-        localDbTransactionId,
+        storageTransactionId,
         args,
       },
     ]);
-  }
-
-  async loadLocalBootstrap(): Promise<BootstrapPayload<MS['models']>> {
-    return this.#localDbClient.loadBootstrap();
   }
 
   // Execute this function on the handshake message to catch up to the server state
@@ -265,10 +233,10 @@ export class LocoSyncClient<MS extends ModelsSpec> {
   // NOTE: THIS ASSUMPTION SHOULD BE COMMUNICATED TO IMPLEMENTERS OF NETWORK CLIENT
   private async deltaSync(fromSyncId: number, toSyncId: number) {
     try {
-      const result = await this.#networkClient.deltaSync(fromSyncId, toSyncId);
+      const result = await this.#network.deltaSync(fromSyncId, toSyncId);
       if (!result.ok) {
         // TODO: Need to clear up details of how exactly to re-try on errors
-        // Not sure what would happen if we kept re-trying a syncDelta request
+        // Not sure what would happen if we kept re-trying a deltaSync request
         // but a websocket closed, new one re-opened, and this function was called again
         if (result.error === 'auth') {
           // TODO: await onAuth callback?
@@ -282,10 +250,10 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       }
 
       const fullSync = result.value.sync.concat(this.#futureSyncActions);
-      for (const cb of this.#syncListeners.values()) {
-        cb(toSyncId, fullSync);
+      for (const cb of this.#listeners.values()) {
+        cb({ type: 'sync', lastSyncId: toSyncId, sync: fullSync });
       }
-      await this.#localDbClient.applySyncActions(toSyncId, fullSync);
+      await this.#storage.applySyncActions(toSyncId, fullSync);
       this.#futureSyncActions = [];
       this.#lastSyncId = toSyncId;
       this.#catchUpSyncCompleted = true;
@@ -316,20 +284,18 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     }
 
     try {
-      const result = await this.#networkClient.sendTransaction(
-        nextTransaction.args,
-      );
+      const result = await this.#network.sendTransaction(nextTransaction.args);
       if (!result.ok) {
         if (result.error === 'server') {
           console.error(
-            `Transaction(localDbTransactionId=${nextTransaction.localDbTransactionId}, clientTransactionId=${nextTransaction.clientTransactionId}) failed, rolling back`,
+            `Transaction(storageTransactionId=${nextTransaction.storageTransactionId}, clientTransactionId=${nextTransaction.clientTransactionId}) failed, rolling back`,
           );
-          await this.#localDbClient.removePendingTransaction(
-            nextTransaction.localDbTransactionId,
+          await this.#storage.removePendingTransaction(
+            nextTransaction.storageTransactionId,
           );
-          for (const cb of this.#localChangeListeners.values()) {
+          for (const cb of this.#listeners.values()) {
             cb({
-              type: 'rollback',
+              type: 'rollbackTransaction',
               clientTransactionId: nextTransaction.clientTransactionId,
             });
           }
@@ -345,12 +311,12 @@ export class LocoSyncClient<MS extends ModelsSpec> {
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } else {
-        await this.#localDbClient.removePendingTransaction(
-          nextTransaction.localDbTransactionId,
+        await this.#storage.removePendingTransaction(
+          nextTransaction.storageTransactionId,
         );
-        for (const cb of this.#localChangeListeners.values()) {
+        for (const cb of this.#listeners.values()) {
           cb({
-            type: 'commit',
+            type: 'commitTransaction',
             clientTransactionId: nextTransaction.clientTransactionId,
             lastSyncId: result.value.lastSyncId,
           });

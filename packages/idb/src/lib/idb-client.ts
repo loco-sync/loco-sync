@@ -1,6 +1,6 @@
 import type {
   BootstrapPayload,
-  LocalDbClient,
+  StorageAdapter,
   Metadata,
   ModelsConfig,
   ModelsSpec,
@@ -31,14 +31,13 @@ type CreateLocoSyncIdbClientOptions = {
   onTerminated?: () => void;
 };
 
-// TODO: What are the inputs here?
 // TODO: Figure out what to do on version changes. Seems like version might need to be fetched from backend?
 // TODO: What durability level to use on transactions? Don't want issues with processing sync actions twice.
-export const createLocoSyncIdbClient = <MS extends ModelsSpec>(
+export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
   namespace: string,
   config: ModelsConfig<MS>,
   options?: CreateLocoSyncIdbClientOptions,
-): LocalDbClient<MS> => {
+): StorageAdapter<MS> => {
   type M = MS['models'];
 
   let _db: IDBPDatabase | undefined = undefined;

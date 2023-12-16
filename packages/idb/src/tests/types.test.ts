@@ -6,9 +6,9 @@ import {
   type ModelsRelationshipDefs,
   one,
   many,
-  type LocalDbClient,
+  type StorageAdapter,
 } from '@loco-sync/client';
-import { createLocoSyncIdbClient } from '../index';
+import { createLocoSyncIdbAdapter } from '../index';
 
 type M = {
   Post: {
@@ -74,7 +74,7 @@ describe('Create types', () => {
       modelDefs,
       relationshipDefs,
     } satisfies ModelsConfig<MS>;
-    const idbClient = createLocoSyncIdbClient<MS>('name', config);
-    expectTypeOf(idbClient).toMatchTypeOf<LocalDbClient<MS>>();
+    const idbClient = createLocoSyncIdbAdapter<MS>('name', config);
+    expectTypeOf(idbClient).toMatchTypeOf<StorageAdapter<MS>>();
   });
 });

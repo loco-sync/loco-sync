@@ -1,20 +1,17 @@
 import type {
   Metadata,
-  Models,
   BootstrapPayload,
   SyncAction,
-  ModelsConfig,
   MutationArgs,
   ModelsSpec,
 } from './core';
 
-export type LocalDbPendingTransaction<MS extends ModelsSpec> = {
+type PendingTransaction<MS extends ModelsSpec> = {
   id: number;
   args: MutationArgs<MS>;
 };
 
-// TODO: Name. LocalStorageClient? StorageClient?
-export interface LocalDbClient<MS extends ModelsSpec> {
+export interface StorageAdapter<MS extends ModelsSpec> {
   /**
    * Returns metadata and pending transactions, if the database exists
    * Otherwise, returns undefined
@@ -22,7 +19,7 @@ export interface LocalDbClient<MS extends ModelsSpec> {
   getMetadataAndPendingTransactions(): Promise<
     | {
         metadata: Metadata;
-        pendingTransactions: LocalDbPendingTransaction<MS>[];
+        pendingTransactions: PendingTransaction<MS>[];
       }
     | undefined
   >;
@@ -35,7 +32,7 @@ export interface LocalDbClient<MS extends ModelsSpec> {
    */
   applySyncActions(
     lastSyncId: number,
-    sync: SyncAction<MS['models'], keyof MS['models'] & string>[]
+    sync: SyncAction<MS['models'], keyof MS['models'] & string>[],
   ): Promise<void>;
 
   /**
@@ -64,6 +61,6 @@ export interface LocalDbClient<MS extends ModelsSpec> {
    */
   saveBootstrap(
     bootstrap: BootstrapPayload<MS['models']>,
-    lastSyncId: number
+    lastSyncId: number,
   ): Promise<void>;
 }

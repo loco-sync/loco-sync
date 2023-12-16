@@ -1,17 +1,7 @@
 import { expectTypeOf } from 'vitest';
-import {
-  // type ModelsConfig,
-  // LocoSyncClient,
-  createConfig,
-} from '@loco-sync/client';
+import { createConfig } from '@loco-sync/client';
 import { type LocoSyncReact, createLocoSyncReact } from '../index';
-import {
-  type MS,
-  modelDefs,
-  relationshipDefs,
-  fakeNetworkClient,
-  fakeLocalDbClient,
-} from './utils';
+import { type MS, modelDefs, relationshipDefs } from './utils';
 
 describe('Create types', () => {
   test('Basic create', () => {

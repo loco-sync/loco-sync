@@ -128,58 +128,43 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     const store = useMemo(() => createLocoSyncReactStore(), [client]);
 
     useEffect(() => {
-      let syncUnsubscribe: (() => void) | undefined;
-      let localChangeUnsubscribe: (() => void) | undefined;
-      (async () => {
-        syncUnsubscribe = client.addSyncListener((lastSyncId, sync) => {
-          store.processMessage({ type: 'sync', lastSyncId, sync });
-        });
-
-        const { unsubscribe, initialized } = client.addLocalChangeListener(
-          (payload) => {
-            if (payload.type === 'start') {
-              store.processMessage({
-                type: 'startTransaction',
-                transactionId: payload.clientTransactionId,
-                changes: getMutationLocalChanges(config, payload.args),
-              });
-            } else if (payload.type === 'commit') {
-              store.processMessage({
-                type: 'commitTransaction',
-                transactionId: payload.clientTransactionId,
-                lastSyncId: payload.lastSyncId,
-              });
-            } else if (payload.type === 'rollback') {
-              store.processMessage({
-                type: 'rollbackTransaction',
-                transactionId: payload.clientTransactionId,
-              });
-            } else if (payload.type === 'bootstrap') {
-              store.loadBootstrap(payload.bootstrap);
-              setIsHydrated(true);
-              client.startSync();
-            }
-          },
-        );
-
-        localChangeUnsubscribe = unsubscribe;
-        if (initialized) {
-          const bootstrap = await client.loadLocalBootstrap();
-          store.loadBootstrap(bootstrap);
+      const unsubscribe = client.addListener((payload) => {
+        if (payload.type === 'sync') {
+          store.processMessage({
+            type: 'sync',
+            lastSyncId: payload.lastSyncId,
+            sync: payload.sync,
+          });
+        } else if (payload.type === 'startTransaction') {
+          store.processMessage({
+            type: 'startTransaction',
+            transactionId: payload.clientTransactionId,
+            changes: getMutationLocalChanges(config, payload.args),
+          });
+        } else if (payload.type === 'commitTransaction') {
+          store.processMessage({
+            type: 'commitTransaction',
+            transactionId: payload.clientTransactionId,
+            lastSyncId: payload.lastSyncId,
+          });
+        } else if (payload.type === 'rollbackTransaction') {
+          store.processMessage({
+            type: 'rollbackTransaction',
+            transactionId: payload.clientTransactionId,
+          });
+        } else if (payload.type === 'bootstrap') {
+          store.loadBootstrap(payload.bootstrap);
           setIsHydrated(true);
-          client.startSync();
         }
-      })();
+      });
+
+      client.start();
 
       return () => {
         // TODO: Any cleanup needed on "store"?
+        client.stop();
+        unsubscribe();
         setIsHydrated(false);
-        if (syncUnsubscribe) {
-          syncUnsubscribe();
-        }
-        if (localChangeUnsubscribe) {
-          localChangeUnsubscribe();
-        }
       };
     }, [client, store]);
 
