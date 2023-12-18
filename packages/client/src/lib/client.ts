@@ -141,26 +141,28 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       }
     }
 
-    this.#networkUnsubscribe = this.#network.initSync(async (response) => {
-      if (response.type === 'handshake') {
-        await this.deltaSync(this.#lastSyncId, response.lastSyncId);
-      } else if (response.type === 'sync') {
-        const { lastSyncId, sync } = response;
-        if (this.#catchUpSyncCompleted) {
-          // TODO: Does ordering of sending sync events to memory vs. storage matter?
-          // storage first seems safer, but also slower?
-          for (const cb of this.#listeners.values()) {
-            cb({ type: 'sync', lastSyncId, sync });
+    this.#networkUnsubscribe = await this.#network.initSync(
+      async (response) => {
+        if (response.type === 'handshake') {
+          await this.deltaSync(this.#lastSyncId, response.lastSyncId);
+        } else if (response.type === 'sync') {
+          const { lastSyncId, sync } = response;
+          if (this.#catchUpSyncCompleted) {
+            // TODO: Does ordering of sending sync events to memory vs. storage matter?
+            // storage first seems safer, but also slower?
+            for (const cb of this.#listeners.values()) {
+              cb({ type: 'sync', lastSyncId, sync });
+            }
+            await this.#storage.applySyncActions(lastSyncId, sync);
+          } else {
+            this.#futureSyncActions.push(...sync);
           }
-          await this.#storage.applySyncActions(lastSyncId, sync);
-        } else {
-          this.#futureSyncActions.push(...sync);
+        } else if (response.type === 'disconnected') {
+          this.#catchUpSyncCompleted = false;
+          this.#futureSyncActions = [];
         }
-      } else if (response.type === 'disconnected') {
-        this.#catchUpSyncCompleted = false;
-        this.#futureSyncActions = [];
-      }
-    });
+      },
+    );
 
     this.#status = 'running';
   }

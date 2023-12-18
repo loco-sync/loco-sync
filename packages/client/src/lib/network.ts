@@ -7,6 +7,8 @@ import type {
 } from './core';
 import type { Result } from './typeUtils';
 
+type Unsubscribe = () => void;
+
 // TODO: Could include some function here to check whether we're online / a callback to detect if we change online/offline?
 export interface NetworkAdapter<MS extends ModelsSpec> {
   sendTransaction(args: MutationArgs<MS>): Promise<SendTransactionResult>;
@@ -15,7 +17,9 @@ export interface NetworkAdapter<MS extends ModelsSpec> {
     toSyncId: number,
   ): Promise<DeltaSyncResult<MS['models']>>;
   loadBootstrap(): Promise<LoadBootstrapResult<MS['models']>>;
-  initSync(listener: NetworkMessageListener<MS['models']>): () => void;
+  initSync(
+    listener: NetworkMessageListener<MS['models']>,
+  ): Promise<Unsubscribe> | Unsubscribe;
 }
 
 type NetworkErrorType = 'auth' | 'network' | 'server';
