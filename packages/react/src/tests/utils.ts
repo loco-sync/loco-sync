@@ -100,11 +100,18 @@ export const fakeStorageAdapter: StorageAdapter<MS> = {
   loadBootstrap: async () => ({}),
 };
 
-export const setup = (bootstrap: BootstrapPayload<M>) => {
+type SetupOptions = {
+  networkAdapter?: Partial<NetworkAdapter<MS>>;
+};
+
+export const setup = (
+  bootstrap: BootstrapPayload<M>,
+  options?: SetupOptions,
+) => {
   const config = createConfig<MS>({
     modelDefs,
     relationshipDefs,
-  }); // satisfies ModelsConfig<MS>;
+  });
 
   let listener: NetworkMessageListener<MS['models']> | undefined;
 
@@ -128,6 +135,7 @@ export const setup = (bootstrap: BootstrapPayload<M>) => {
       });
       return () => {};
     },
+    ...options?.networkAdapter,
   };
 
   const storageAdapter: StorageAdapter<MS> = {

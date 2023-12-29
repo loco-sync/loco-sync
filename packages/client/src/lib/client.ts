@@ -4,6 +4,7 @@ import type {
   SyncAction,
   ModelsSpec,
   MutationArgs,
+  MutationOptions,
 } from './core';
 import type { NetworkAdapter } from './network';
 import type { StorageAdapter } from './storage';
@@ -44,6 +45,7 @@ type CombinedPendingTransaction<MS extends ModelsSpec> = {
   clientTransactionId: number;
   storageTransactionId: number;
   args: MutationArgs<MS>;
+  options: MutationOptions | undefined;
 };
 
 export type LocoSyncClientStatus =
@@ -116,6 +118,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
           clientTransactionId,
           storageTransactionId,
           args,
+          options: undefined,
         });
       }
       this.addPendingTransactionsToQueue(combinedPendingTransactions);
@@ -197,7 +200,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
   //   return false;
   // }
 
-  async addMutation(args: MutationArgs<MS>) {
+  async addMutation(args: MutationArgs<MS>, options?: MutationOptions) {
     const status = this.#status;
     if (status !== 'running') {
       console.error(
@@ -225,6 +228,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
         clientTransactionId,
         storageTransactionId,
         args,
+        options,
       },
     ]);
   }
@@ -301,6 +305,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
               clientTransactionId: nextTransaction.clientTransactionId,
             });
           }
+          nextTransaction?.options?.onError?.();
         } else {
           // Only retry on network or auth errors, and re-auth first if relevant
           if (result.error === 'auth') {
@@ -323,6 +328,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
             lastSyncId: result.value.lastSyncId,
           });
         }
+        nextTransaction?.options?.onSuccess?.();
       }
     } catch (e) {
       console.error(e);

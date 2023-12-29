@@ -42,8 +42,14 @@ export type MutationArgs<MS extends ModelsSpec> =
     ? MS['mutationArgs']
     : LocalChanges<MS['models']>;
 
+export type MutationOptions = {
+  onSuccess?: () => void;
+  onError?: () => void;
+};
+
 export type MutationFn<MS extends ModelsSpec> = (
   args: MutationArgs<MS>,
+  options?: MutationOptions,
 ) => void;
 
 export type ModelsWithKeys<ModelName extends string> = Record<ModelName, Model>;

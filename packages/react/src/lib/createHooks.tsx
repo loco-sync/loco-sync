@@ -24,6 +24,10 @@ import { type LocoSyncReactStore, createLocoSyncReactStore } from './store';
 import { QueryManyWatcher, QueryOneWatcher } from './watchers';
 import { useSyncExternalStore } from 'use-sync-external-store/shim';
 
+export type UseMutation<MS extends ModelsSpec> = {
+  mutate: MutationFn<MS>;
+};
+
 export interface LocoSyncReactProviderProps<MS extends ModelsSpec> {
   client: LocoSyncClient<MS>;
   notHydratedFallback?: ReactNode;
@@ -98,7 +102,7 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
         >
       | undefined;
   };
-  useMutation(): [MutationFn<MS>];
+  useMutation(): UseMutation<MS>;
   useIsHydrated: () => boolean;
 }
 
@@ -232,13 +236,14 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     if (!client) {
       throw new Error('LocoSync context provider not found.');
     }
-    const mutationFn: MutationFn<MS> = useCallback(
-      (args) => {
-        client.addMutation(args);
-      },
+    return useMemo(
+      () => ({
+        mutate: (args, options) => {
+          client.addMutation(args, options);
+        },
+      }),
       [client],
     );
-    return [mutationFn];
   };
 
   const useIsHydrated = () => {
