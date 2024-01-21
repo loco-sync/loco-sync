@@ -77,10 +77,7 @@ function applyRelationships<
     type SubSelection = ModelRelationshipSelection<M, R, ReferencedModelName>;
 
     if (relationshipDef.type === 'one') {
-      // TODO: Any way to make this type work?
-      const filter = {
-        [relationshipDef.references]: modelData[relationshipDef.field],
-      } as unknown as ModelFilter<M, ReferencedModelName>;
+      const filter = filterForModelRelationship(relationshipDef, modelData);
       const referencedModels = store.getMany(
         relationshipDef.referencesModelName,
         filter,
@@ -117,10 +114,7 @@ function applyRelationships<
       result[relKey as keyof ModelResult<M, R, ModelName, Selection>] =
         oneResult as any;
     } else {
-      // TODO: Any way to make this type work?
-      const filter = {
-        [relationshipDef.references]: modelData[relationshipDef.field],
-      } as unknown as ModelFilter<M, ReferencedModelName>;
+      const filter = filterForModelRelationship(relationshipDef, modelData);
       const referencedModels = store.getMany(
         relationshipDef.referencesModelName,
         filter,
@@ -155,6 +149,30 @@ function applyRelationships<
   }
 
   return { result, unsubscribers };
+}
+
+function filterForModelRelationship<
+  M extends Models,
+  ModelName extends keyof M & string,
+  ReferencedModelName extends keyof M & string,
+>(
+  relationshipDef: ModelRelationshipDef<
+    M,
+    ModelName,
+    ReferencedModelName,
+    'one' | 'many'
+  >,
+  modelData: ModelData<M, ModelName>,
+): ModelFilter<M, ReferencedModelName> {
+  const filter: ModelFilter<M, ReferencedModelName> = {};
+  for (const { base, reference } of relationshipDef.fields) {
+    // TODO: Any way to make this type work?
+    filter[reference] = modelData[base] as unknown as ModelData<
+      M,
+      ReferencedModelName
+    >[keyof ModelData<M, ReferencedModelName>];
+  }
+  return filter;
 }
 
 export class QueryManyWatcher<

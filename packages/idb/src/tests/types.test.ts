@@ -49,21 +49,25 @@ const modelDefs: ModelDefs<M> = {
 const relationshipDefs = {
   Post: {
     author: one('Author', {
-      field: 'authorId',
+      fields: ['authorId'],
+      references: ['id'],
     }),
   },
   Author: {
     posts: many('Post', {
-      references: 'authorId',
+      fields: ['id'],
+      references: ['authorId'],
     }),
   },
   Tag: {},
   PostTag: {
     post: one('Post', {
-      field: 'postId',
+      fields: ['postId'],
+      references: ['id'],
     }),
     tag: one('Tag', {
-      field: 'tagId',
+      fields: ['tagId'],
+      references: ['id'],
     }),
   },
 } satisfies ModelsRelationshipDefs<M>;

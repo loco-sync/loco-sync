@@ -50,21 +50,25 @@ const modelDefs: ModelDefs<M> = {
 const relationshipDefs = {
   Post: {
     author: one('Author', {
-      field: 'authorId',
+      fields: ['authorId'],
+      references: ['id'],
     }),
   },
   Author: {
     posts: many('Post', {
-      references: 'authorId',
+      fields: ['id'],
+      references: ['authorId'],
     }),
   },
   Tag: {},
   PostTag: {
     post: one('Post', {
-      field: 'postId',
+      fields: ['postId'],
+      references: ['id'],
     }),
     tag: one('Tag', {
-      field: 'tagId',
+      fields: ['tagId'],
+      references: ['id'],
     }),
   },
 } satisfies ModelsRelationshipDefs<M>;
@@ -178,3 +182,67 @@ describe('Local Changes', () => {
     expectTypeOf<typeof localChanges>().not.toMatchTypeOf<LocalChanges<M>>();
   });
 });
+
+// Couldn't figure out a good way to get these tests to work with "expectTypeOf" but not have compiler errors, moving on
+
+// describe('Relationship Defs', () => {
+//   test('Fields values must be on model', () => {
+//     const relationshipDefs = {
+//       Post: {
+//         author: one('Author', {
+//           fields: ['name'],
+//           references: ['id'],
+//         }),
+//       },
+//     } satisfies ModelsRelationshipDefs<M>;
+
+//     expectTypeOf<typeof relationshipDefs>().toMatchTypeOf<
+//       ModelsRelationshipDefs<M>
+//     >();
+//   });
+
+//   test('References values must be on model', () => {
+//     const relationshipDefs = {
+//       Post: {
+//         author: one('Author', {
+//           fields: ['id'],
+//           references: ['title'],
+//         }),
+//       },
+//     } satisfies ModelsRelationshipDefs<M>;
+
+//     expectTypeOf<typeof relationshipDefs>().toMatchTypeOf<
+//       ModelsRelationshipDefs<M>
+//     >();
+//   });
+
+//   test('Fields and references must be the same length', () => {
+//     const relationshipDefs = {
+//       Post: {
+//         author: one('Author', {
+//           fields: ['id', 'authorId'],
+//           references: ['id'],
+//         }),
+//       },
+//     } satisfies ModelsRelationshipDefs<M>;
+
+//     expectTypeOf<typeof relationshipDefs>().toMatchTypeOf<
+//       ModelsRelationshipDefs<M>
+//     >();
+//   });
+
+//   test('Fields / references cannot be empty', () => {
+//     const relationshipDefs = {
+//       Post: {
+//         author: one('Author', {
+//           fields: [],
+//           references: [],
+//         }),
+//       },
+//     } satisfies ModelsRelationshipDefs<M>;
+
+//     expectTypeOf<typeof relationshipDefs>().toMatchTypeOf<
+//       ModelsRelationshipDefs<M>
+//     >();
+//   });
+// });

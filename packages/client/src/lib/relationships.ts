@@ -16,62 +16,115 @@ export type ModelRelationshipDef<
   M extends Models,
   ModelName extends keyof M & string,
   ReferencesModelName extends keyof M & string,
-  Type extends ModelRelationshipType
+  Type extends ModelRelationshipType,
 > = {
   referencesModelName: ReferencesModelName;
-  // TODO: What would it look like to have composite (e.g. field, referencesField are lists)
-  references: keyof ModelData<M, ReferencesModelName>;
-  field: keyof ModelData<M, ModelName>;
+  fields: {
+    reference: ModelField<M, ReferencesModelName>;
+    base: ModelField<M, ModelName>;
+  }[];
   type: Type;
 };
 
-// TODO: Support for relationship where "field" is an array of ids
+// TODO: Support for relationship where one of "fields" is an array of ids
 // many-to-many's can represented this way
+
+type RelationshipConfig<
+  M extends Models,
+  ModelName extends keyof M & string,
+  ReferencesModelName extends keyof M & string,
+  TFields extends ModelField<M, ModelName>[],
+> = {
+  fields: TFields;
+  references: MatchingModelFields<M, ModelName, ReferencesModelName, TFields>;
+};
+
+type MatchingModelFields<
+  M extends Models,
+  ModelName extends keyof M & string,
+  ReferencesModelName extends keyof M & string,
+  TFields extends ModelField<M, ModelName>[],
+> = {
+  [Key in keyof TFields]: ModelField<M, ReferencesModelName>;
+};
+
+type ModelField<
+  M extends Models,
+  ModelName extends keyof M & string,
+> = keyof ModelData<M, ModelName>;
 
 export const many = <
   M extends Models,
   ModelName extends keyof M & string,
-  ReferencesModelName extends keyof M & string
+  ReferencesModelName extends keyof M & string,
+  TFields extends [ModelField<M, ModelName>, ...ModelField<M, ModelName>[]],
 >(
   referencesModelName: ReferencesModelName,
-  {
-    references,
-    field = 'id',
-  }: {
-    references: keyof ModelData<M, ReferencesModelName>;
-    field?: keyof ModelData<M, ModelName>;
-  }
+  config: RelationshipConfig<M, ModelName, ReferencesModelName, TFields>,
 ): ModelRelationshipDef<M, ModelName, ReferencesModelName, 'many'> => ({
   referencesModelName,
-  references,
-  field,
+  fields: normalizeRelationshipFields(config),
   type: 'many',
 });
 
 export const one = <
   M extends Models,
   ModelName extends keyof M & string,
-  ReferencesModelName extends keyof M & string
+  ReferencesModelName extends keyof M & string,
+  TFields extends [ModelField<M, ModelName>, ...ModelField<M, ModelName>[]],
 >(
   referencesModelName: ReferencesModelName,
-  {
-    references = 'id',
-    field,
-  }: {
-    references?: keyof ModelData<M, ReferencesModelName>;
-    field: keyof ModelData<M, ModelName>;
-  }
+  config: RelationshipConfig<M, ModelName, ReferencesModelName, TFields>,
 ): ModelRelationshipDef<M, ModelName, ReferencesModelName, 'one'> => ({
   referencesModelName,
-  references,
-  field,
+  fields: normalizeRelationshipFields(config),
   type: 'one',
 });
+
+function normalizeRelationshipFields<
+  M extends Models,
+  ModelName extends keyof M & string,
+  ReferencesModelName extends keyof M & string,
+  TFields extends ModelField<M, ModelName>[],
+>({
+  references,
+  fields,
+}: RelationshipConfig<M, ModelName, ReferencesModelName, TFields>): {
+  reference: ModelField<M, ReferencesModelName>;
+  base: ModelField<M, ModelName>;
+}[] {
+  const result: {
+    reference: ModelField<M, ReferencesModelName>;
+    base: ModelField<M, ModelName>;
+  }[] = [];
+
+  if (fields.length !== references.length) {
+    throw new Error('"fields" and "references" are different lengths');
+  }
+
+  if (fields.length === 0) {
+    throw new Error('"fields" and "references" cannot be empty');
+  }
+
+  for (let index = 0; index < fields.length; index++) {
+    const base = fields[index];
+    const reference = references[index];
+    if (base === undefined || reference === undefined) {
+      throw new Error('"fields" and "references" are different lengths');
+    }
+    result.push({
+      base,
+      reference,
+    });
+  }
+
+  return result;
+}
 
 export type ModelRelationshipSelection<
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
-  ModelName extends keyof M & string
+  ModelName extends keyof M & string,
 > = {
   [K in keyof R[ModelName]]?: R[ModelName][K] extends ModelRelationshipDef<
     M,
@@ -87,7 +140,7 @@ export type ModelRelationshipData<
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName> | undefined
+  Selection extends ModelRelationshipSelection<M, R, ModelName> | undefined,
 > = {
   [K in keyof Selection &
     string &
@@ -117,7 +170,7 @@ export type ModelResult<
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName> | undefined
+  Selection extends ModelRelationshipSelection<M, R, ModelName> | undefined,
 > = Simplify<
   ModelData<M, ModelName> & ModelRelationshipData<M, R, ModelName, Selection>
 >;

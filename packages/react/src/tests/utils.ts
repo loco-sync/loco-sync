@@ -37,6 +37,12 @@ type M = {
     postId: string;
     tagId: string;
   };
+  PostTagAnnotation: {
+    id: string;
+    postId: string;
+    tagId: string;
+    annotation: string;
+  };
 };
 
 type R = typeof relationshipDefs;
@@ -52,31 +58,41 @@ export const modelDefs: ModelDefs<M> = {
   Author: { schemaVersion: 0 },
   Tag: { schemaVersion: 0 },
   PostTag: { schemaVersion: 0 },
+  PostTagAnnotation: { schemaVersion: 0 },
 };
 
 export const relationshipDefs = {
   Post: {
     author: one('Author', {
-      field: 'authorId',
+      fields: ['authorId'],
+      references: ['id'],
     }),
   },
   Author: {
     posts: many('Post', {
-      references: 'authorId',
+      fields: ['id'],
+      references: ['authorId'],
     }),
   },
   Group: {
     authors: many('Author', {
-      references: 'groupId',
+      fields: ['id'],
+      references: ['groupId'],
     }),
   },
   Tag: {},
   PostTag: {
     post: one('Post', {
-      field: 'postId',
+      fields: ['postId'],
+      references: ['id'],
     }),
     tag: one('Tag', {
-      field: 'tagId',
+      fields: ['tagId'],
+      references: ['id'],
+    }),
+    annotations: many('PostTagAnnotation', {
+      fields: ['postId', 'tagId'],
+      references: ['postId', 'tagId'],
     }),
   },
 } satisfies ModelsRelationshipDefs<M>;
