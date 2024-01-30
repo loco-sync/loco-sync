@@ -10,6 +10,7 @@ import {
   type NetworkMessage,
   type StorageAdapter,
   type NetworkMessageListener,
+  type SyncAction,
 } from '@loco-sync/client';
 
 type M = {
@@ -79,3 +80,11 @@ export const client = new LocoSyncClient({
   network: networkAdapter,
   storage: storageAdapter,
 });
+
+const syncAction: SyncAction<M, 'Todo'> = {
+  syncId: 123,
+  action: 'insert',
+  modelName: 'Todo',
+  modelId: '1',
+  data: { id: '1', text: 'hello', authorId: '1' },
+};
