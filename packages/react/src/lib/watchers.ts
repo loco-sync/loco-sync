@@ -292,7 +292,7 @@ export class QueryOneWatcher<
     | {
         modelName: ModelName;
         selection: Selection | undefined;
-        modelId: string;
+        modelFilter: ModelFilter<M, ModelName> | undefined;
         visitResult: VisitResult<M, R, ModelName, Selection> | undefined;
         baseUnsubscriber: () => void;
       }
@@ -309,11 +309,11 @@ export class QueryOneWatcher<
 
   private refresh(
     modelName: ModelName,
-    modelId: string,
+    modelFilter: ModelFilter<M, ModelName> | undefined,
     selection: Selection | undefined,
   ) {
-    const baseModelData = this.store.getOne(modelName, modelId);
-    const baseUnsubscriber = this.store.subOne(modelName, modelId, () =>
+    const baseModelData = this.store.getOne(modelName, modelFilter);
+    const baseUnsubscriber = this.store.subOne(modelName, modelFilter, () =>
       this.onChange(),
     );
     const visitResult =
@@ -329,7 +329,7 @@ export class QueryOneWatcher<
 
     this.#current = {
       modelName,
-      modelId,
+      modelFilter,
       selection,
       visitResult,
       baseUnsubscriber,
@@ -354,7 +354,7 @@ export class QueryOneWatcher<
     // Resubscribe and update results
     this.refresh(
       this.#current.modelName,
-      this.#current.modelId,
+      this.#current.modelFilter,
       this.#current.selection,
     );
 
@@ -366,10 +366,10 @@ export class QueryOneWatcher<
   subscribe(
     callback: () => void,
     modelName: ModelName,
-    modelId: string,
+    modelFilter: ModelFilter<M, ModelName> | undefined,
     selection: Selection | undefined,
   ) {
-    this.refresh(modelName, modelId, selection);
+    this.refresh(modelName, modelFilter, selection);
 
     this.#listeners.add(callback);
     return () => this.#listeners.delete(callback);

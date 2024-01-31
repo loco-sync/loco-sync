@@ -58,9 +58,13 @@ const { config, client } = setup(bootstrap);
 const { Provider, useQueryOne } = createLocoSyncReact(config);
 
 const Test = ({ id }: { id: string }) => {
-  const data = useQueryOne('PostTag', id, {
-    annotations: {},
-  });
+  const data = useQueryOne(
+    'PostTag',
+    { id },
+    {
+      annotations: {},
+    },
+  );
 
   if (!data) {
     return <span>Not found</span>;

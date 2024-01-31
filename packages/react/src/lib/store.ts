@@ -33,7 +33,7 @@ export type LocoSyncReactStore<M extends Models> = {
    */
   getOne: <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId,
+    filter?: ModelFilter<M, ModelName>,
   ) => ModelData<M, ModelName> | undefined;
 
   loadBootstrap: (payload: BootstrapPayload<M>) => void;
@@ -46,7 +46,7 @@ export type LocoSyncReactStore<M extends Models> = {
   ) => () => void;
   subOne: <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId,
+    filter: ModelFilter<M, ModelName> | undefined,
     listener: () => void,
   ) => () => void;
 
@@ -129,16 +129,25 @@ export const createLocoSyncReactStore = <
 
   const getOne = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId,
+    filter?: ModelFilter<M, ModelName>,
   ) => {
-    return modelsData.get(modelName)?.get(modelId)?.optimisticData as
-      | ModelData<M, ModelName>
-      | undefined;
+    const modelMap = modelsData.get(modelName);
+    if (!modelMap) {
+      return undefined;
+    }
+    for (const { optimisticData } of modelMap.values()) {
+      if (optimisticData) {
+        if (!filter || modelPredicateFn(optimisticData, filter)) {
+          return optimisticData as ModelData<M, ModelName>;
+        }
+      }
+    }
+    return undefined;
   };
 
   const getMany = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    filters?: ModelFilter<M, ModelName>,
+    filter?: ModelFilter<M, ModelName>,
   ) => {
     const result: ModelData<M, ModelName>[] = [];
     const modelMap = modelsData.get(modelName);
@@ -147,7 +156,7 @@ export const createLocoSyncReactStore = <
     }
     for (const { optimisticData } of modelMap.values()) {
       if (optimisticData) {
-        if (!filters || modelPredicateFn(optimisticData, filters)) {
+        if (!filter || modelPredicateFn(optimisticData, filter)) {
           result.push(optimisticData as ModelData<M, ModelName>);
         }
       }
@@ -357,19 +366,20 @@ export const createLocoSyncReactStore = <
     }
   };
 
+  // TODO: This is the same as subMany now, does there need to be any difference?
   const subOne = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    modelId: ModelId,
+    filter: ModelFilter<M, ModelName> | undefined,
     listener: () => void,
   ) => {
-    const modelNameId = `${modelName}:${modelId}`;
-    let modelNameIdListeners = allModelNameIdListeners.get(modelNameId);
-    if (!modelNameIdListeners) {
-      modelNameIdListeners = new Set();
-      allModelNameIdListeners.set(modelNameId, modelNameIdListeners);
+    let modelNameListeners = allModelNameListeners.get(modelName);
+    if (!modelNameListeners) {
+      modelNameListeners = new Set();
+      allModelNameListeners.set(modelName, modelNameListeners);
     }
-    modelNameIdListeners.add(listener);
-    return () => modelNameIdListeners?.delete(listener);
+    const filterListener = { filter, listener };
+    modelNameListeners.add(filterListener);
+    return () => modelNameListeners?.delete(filterListener);
   };
 
   const subMany = <ModelName extends keyof M & string>(

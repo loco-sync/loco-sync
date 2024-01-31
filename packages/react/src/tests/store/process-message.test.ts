@@ -36,7 +36,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
         },
       ],
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'new title',
       body: 'init body',
@@ -49,7 +49,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
       transactionId: 1,
       lastSyncId: 1,
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'new title',
       body: 'init body',
@@ -71,7 +71,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
         },
       ],
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'new title',
       body: 'new body',
@@ -84,7 +84,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
       transactionId: 2,
       lastSyncId: 2,
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'new title',
       body: 'new body',
@@ -122,7 +122,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
         },
       ],
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'new title',
       body: 'new body',
@@ -144,7 +144,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
         },
       ],
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'newer title',
       body: 'new body',
@@ -157,7 +157,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
       transactionId: 3,
       lastSyncId: 3,
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'newer title',
       body: 'new body',
@@ -183,7 +183,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
         },
       ],
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'newer title',
       body: 'new body',
@@ -205,7 +205,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
         },
       ],
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'newer title',
       body: 'newer body',
@@ -218,7 +218,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
       transactionId: 4,
       lastSyncId: 4,
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'newer title',
       body: 'newer body',
@@ -244,7 +244,7 @@ describe('LocoSyncReactStore.processMessage()', () => {
         },
       ],
     });
-    expect(store.getOne('Post', '1')).toEqual({
+    expect(store.getOne('Post', { id: '1' })).toEqual({
       id: '1',
       title: 'newer title',
       body: 'newer body',

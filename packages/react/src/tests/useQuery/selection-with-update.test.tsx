@@ -67,11 +67,15 @@ const { config, client, sendMessage } = setup(bootstrap);
 const { Provider, useQueryOne } = createLocoSyncReact(config);
 
 const Test1 = () => {
-  const data = useQueryOne('Group', '1', {
-    authors: {
-      posts: {},
+  const data = useQueryOne(
+    'Group',
+    { id: '1' },
+    {
+      authors: {
+        posts: {},
+      },
     },
-  });
+  );
 
   if (!data) {
     return (

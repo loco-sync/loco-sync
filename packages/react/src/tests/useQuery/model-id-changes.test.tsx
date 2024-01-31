@@ -42,7 +42,7 @@ const { config, client } = setup(bootstrap);
 const { Provider, useQueryOne } = createLocoSyncReact(config);
 
 const Test = ({ id }: { id: string }) => {
-  const data = useQueryOne('Group', id);
+  const data = useQueryOne('Group', { id });
 
   if (!data) {
     return <span>Not found</span>;

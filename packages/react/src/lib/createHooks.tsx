@@ -72,7 +72,7 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
   useQueryOne: {
     <ModelName extends keyof MS['models'] & string>(
       modelName: ModelName,
-      modelId: ModelId,
+      modelFilter?: ModelFilter<MS['models'], ModelName>,
     ):
       | ModelResult<
           MS['models'],
@@ -91,7 +91,7 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
       >,
     >(
       modelName: ModelName,
-      modelId: ModelId,
+      modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
       selection: Selection,
     ):
       | ModelResult<
@@ -215,7 +215,7 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     Selection extends ModelRelationshipSelection<M, R, ModelName>,
   >(
     modelName: ModelName,
-    modelId: string,
+    modelFilter?: ModelFilter<M, ModelName>,
     selection?: Selection,
   ): ModelResult<M, R, ModelName, Selection> | undefined => {
     const store = useContext().store;
@@ -226,7 +226,7 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
       store,
       relationshipDefs,
       modelName,
-      modelId,
+      modelFilter,
       selection,
     );
   };
@@ -268,7 +268,7 @@ const useQueryOneFromStore = <
   store: LocoSyncReactStore<M>,
   relationshipDefs: R,
   modelName: ModelName,
-  modelId: string,
+  modelFilter: ModelFilter<M, ModelName> | undefined,
   selection?: Selection,
 ): ModelResult<M, R, ModelName, Selection> | undefined => {
   const watcherRef = useRef<QueryOneWatcher<M, R, ModelName, Selection>>();
@@ -284,8 +284,13 @@ const useQueryOneFromStore = <
 
   return useSyncExternalStore(
     useCallback(
-      (cb) => watcher.subscribe(cb, modelName, modelId, selection),
-      [watcher, modelName, modelId, JSON.stringify(selection)],
+      (cb) => watcher.subscribe(cb, modelName, modelFilter, selection),
+      [
+        watcher,
+        modelName,
+        JSON.stringify(modelFilter),
+        JSON.stringify(selection),
+      ],
     ),
     useCallback(() => watcher.getSnapshot(), [watcher]),
   );
