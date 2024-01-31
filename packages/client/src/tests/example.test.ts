@@ -4,14 +4,11 @@ import {
   one,
   many,
   LocoSyncClient,
-  type BootstrapPayload,
   createConfig,
   type NetworkAdapter,
-  type NetworkMessage,
   type StorageAdapter,
-  type NetworkMessageListener,
   type SyncAction,
-} from '@loco-sync/client';
+} from '../index';
 
 type M = {
   Todo: {
@@ -88,3 +85,13 @@ const syncAction: SyncAction<M, 'Todo'> = {
   modelId: '1',
   data: { id: '1', text: 'hello', authorId: '1' },
 };
+
+it('placeholder test', () => {
+  expect(syncAction).toEqual({
+    syncId: 123,
+    action: 'insert',
+    modelName: 'Todo',
+    modelId: '1',
+    data: { id: '1', text: 'hello', authorId: '1' },
+  });
+});
