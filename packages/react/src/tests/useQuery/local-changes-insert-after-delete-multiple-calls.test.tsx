@@ -5,7 +5,7 @@ import '@testing-library/jest-dom';
 import { createLocoSyncReact } from '../../index';
 import { setup } from '../utils';
 
-test('lo_asdf_cal changes with insert after delete, multiple calls', async () => {
+test('local changes with insert after delete, multiple calls', async () => {
   const user = userEvent.setup();
 
   render(
