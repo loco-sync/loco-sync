@@ -212,7 +212,7 @@ function getUpdatedStateForSync<M extends Models>(
     if (syncAction.action === 'insert') {
       if (currentModelData) {
         errorMessages.push(
-          `Insert failed: ${syncAction.modelName} ${syncAction.modelId} already exists`,
+          `Insert (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} already exists`,
         );
       } else if (existingDataPatch) {
         existingDataPatch.data = syncAction.data;
@@ -226,7 +226,7 @@ function getUpdatedStateForSync<M extends Models>(
     } else if (syncAction.action === 'update') {
       if (!currentModelData) {
         errorMessages.push(
-          `Update failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
+          `Update (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
         );
       } else if (existingDataPatch) {
         existingDataPatch.data = syncAction.data;
@@ -240,7 +240,7 @@ function getUpdatedStateForSync<M extends Models>(
     } else if (syncAction.action === 'delete') {
       if (!currentModelData) {
         errorMessages.push(
-          `Delete failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
+          `Delete (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
         );
       } else if (existingDataPatch) {
         existingDataPatch.data = undefined;
@@ -337,10 +337,7 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
 
     if (change.action === 'create') {
       if (currentModelData) {
-        errorMessage = `Insert failed: ${change.modelName} ${change.modelId} data already exists`;
-      } else if (currentModelChangeSnapshots.length > 0) {
-        // Would not be an error if insert after delete is allowed
-        errorMessage = `Insert failed: ${change.modelName} ${change.modelId} change snapshots already exists`;
+        errorMessage = `Insert (local change) failed: ${change.modelName} ${change.modelId} data already exists`;
       } else {
         newSnapshot = {
           transactionId,
@@ -350,7 +347,7 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
       }
     } else if (change.action === 'update') {
       if (!currentModelData) {
-        errorMessage = `Update failed: ${change.modelName} ${change.modelId} does not exist`;
+        errorMessage = `Update (local change) failed: ${change.modelName} ${change.modelId} does not exist`;
       } else {
         const changes: ModelPendingChange<M, keyof M & string> = {};
         for (const key in change.data) {
@@ -374,7 +371,7 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
       }
     } else if (change.action === 'delete') {
       if (!currentModelData) {
-        errorMessage = `Delete failed: ${change.modelName} ${change.modelId} does not exist`;
+        errorMessage = `Delete (local change) failed: ${change.modelName} ${change.modelId} does not exist`;
       } else {
         newSnapshot = {
           transactionId,
