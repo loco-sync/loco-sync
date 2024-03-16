@@ -7,7 +7,13 @@ import React, {
   useState,
   useMemo,
 } from 'react';
-import { LocoSyncClient, getMutationLocalChanges } from '@loco-sync/client';
+import {
+  LocoSyncClient,
+  getMutationLocalChanges,
+  createModelDataStore,
+  QueryManyObserver,
+  QueryOneObserver,
+} from '@loco-sync/client';
 import type {
   ModelsRelationshipDefs,
   ModelRelationshipSelection,
@@ -19,9 +25,8 @@ import type {
   ExtractModelsRelationshipDefs,
   ModelsSpec,
   ModelsConfig,
+  ModelDataStore,
 } from '@loco-sync/client';
-import { type LocoSyncReactStore, createLocoSyncReactStore } from './store';
-import { QueryManyWatcher, QueryOneWatcher } from './watchers';
 import { useSyncExternalStore } from 'use-sync-external-store/shim';
 
 export type UseMutation<MS extends ModelsSpec> = {
@@ -108,7 +113,7 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
 
 type InternalContext<MS extends ModelsSpec> = {
   isHydrated: boolean;
-  store: LocoSyncReactStore<MS['models']> | undefined;
+  store: ModelDataStore<MS['models']> | undefined;
   client: LocoSyncClient<MS> | undefined;
 };
 
@@ -129,7 +134,7 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
   const Provider: LocoSyncReactProvider<MS> = (props) => {
     const [isHydrated, setIsHydrated] = useState(false);
     const client = props.client;
-    const store = useMemo(() => createLocoSyncReactStore(), [client]);
+    const store = useMemo(() => createModelDataStore(), [client]);
 
     useEffect(() => {
       const unsubscribe = client.addListener((payload) => {
@@ -265,20 +270,20 @@ const useQueryOneFromStore = <
   ModelName extends keyof M & string,
   Selection extends ModelRelationshipSelection<M, R, ModelName>,
 >(
-  store: LocoSyncReactStore<M>,
+  store: ModelDataStore<M>,
   relationshipDefs: R,
   modelName: ModelName,
   modelFilter: ModelFilter<M, ModelName> | undefined,
   selection?: Selection,
 ): ModelResult<M, R, ModelName, Selection> | undefined => {
-  const watcherRef = useRef<QueryOneWatcher<M, R, ModelName, Selection>>();
+  const watcherRef = useRef<QueryOneObserver<M, R, ModelName, Selection>>();
 
   if (
     !watcherRef.current ||
     watcherRef.current.store !== store ||
     watcherRef.current.relationshipDefs !== relationshipDefs
   ) {
-    watcherRef.current = new QueryOneWatcher(store, relationshipDefs);
+    watcherRef.current = new QueryOneObserver(store, relationshipDefs);
   }
   const watcher = watcherRef.current;
 
@@ -302,20 +307,20 @@ const useQueryManyFromStore = <
   ModelName extends keyof M & string,
   Selection extends ModelRelationshipSelection<M, R, ModelName>,
 >(
-  store: LocoSyncReactStore<M>,
+  store: ModelDataStore<M>,
   relationshipDefs: R,
   modelName: ModelName,
   modelFilter: ModelFilter<M, ModelName> | undefined,
   selection?: Selection,
 ): ModelResult<M, R, ModelName, Selection>[] => {
-  const watcherRef = useRef<QueryManyWatcher<M, R, ModelName, Selection>>();
+  const watcherRef = useRef<QueryManyObserver<M, R, ModelName, Selection>>();
 
   if (
     !watcherRef.current ||
     watcherRef.current.store !== store ||
     watcherRef.current.relationshipDefs !== relationshipDefs
   ) {
-    watcherRef.current = new QueryManyWatcher(store, relationshipDefs);
+    watcherRef.current = new QueryManyObserver(store, relationshipDefs);
   }
   const watcher = watcherRef.current;
 

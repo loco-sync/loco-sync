@@ -1,16 +1,14 @@
-import type {
-  ModelData,
-  ModelId,
-  Models,
-  ModelChangeSnapshot,
-  PendingTransaction,
-  BootstrapPayload,
-  ModelFilter,
-  ToProcessMessage,
-} from '@loco-sync/client';
-import { applyChangeSnapshotsToData, getStateUpdate } from '@loco-sync/client';
+import type { BootstrapPayload, ModelData, ModelFilter, Models } from './core';
+import {
+  applyChangeSnapshotsToData,
+  getStateUpdate,
+  type ModelChangeSnapshot,
+  type ModelId,
+  type PendingTransaction,
+  type ToProcessMessage,
+} from './transactionUtils';
 
-export type LocoSyncReactStore<M extends Models> = {
+export type ModelDataStore<M extends Models> = {
   lastSyncId: () => number;
   pendingTransactions: () => readonly PendingTransaction<M>[];
 
@@ -80,9 +78,7 @@ export type LocoSyncReactStore<M extends Models> = {
 type Listener = () => void;
 type Listeners = Set<Listener>;
 
-export const createLocoSyncReactStore = <
-  M extends Models,
->(): LocoSyncReactStore<M> => {
+export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
   const modelsData: Map<
     keyof M & string,
     Map<

@@ -1,13 +1,10 @@
-import {
-  createLocoSyncReactStore,
-  type LocoSyncReactStore,
-} from '../../lib/store';
+import { createModelDataStore, type ModelDataStore } from '@loco-sync/client';
 import type { MS } from '../utils';
 
-describe('LocoSyncReactStore.processMessage()', () => {
-  let store: LocoSyncReactStore<MS['models']>;
+describe('ModelDataStore.processMessage()', () => {
+  let store: ModelDataStore<MS['models']>;
   beforeEach(() => {
-    store = createLocoSyncReactStore<MS['models']>();
+    store = createModelDataStore<MS['models']>();
     store.loadBootstrap({
       Post: [
         {

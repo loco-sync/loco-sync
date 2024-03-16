@@ -1,13 +1,11 @@
+import type { Models, ModelData, ModelFilter } from './core';
+import type { ModelDataStore } from './model-data-store';
 import type {
-  Models,
+  ModelRelationshipDef,
+  ModelRelationshipSelection,
   ModelResult,
   ModelsRelationshipDefs,
-  ModelRelationshipSelection,
-  ModelData,
-  ModelRelationshipDef,
-  ModelFilter,
-} from '@loco-sync/client';
-import type { LocoSyncReactStore } from './store';
+} from './relationships';
 
 // Types of changes
 // - creates
@@ -42,7 +40,7 @@ function applyRelationships<
   modelData: ModelData<M, ModelName>,
   selection: Selection | undefined,
   relationshipDefs: R,
-  store: LocoSyncReactStore<M>,
+  store: ModelDataStore<M>,
   listener: () => void,
   // listener: (
   //   data: ModelData<M, ModelName> | undefined,
@@ -175,7 +173,7 @@ function filterForModelRelationship<
   return filter;
 }
 
-export class QueryManyWatcher<
+export class QueryManyObserver<
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
@@ -195,7 +193,7 @@ export class QueryManyWatcher<
   #result: ModelResult<M, R, ModelName, Selection>[];
 
   constructor(
-    public readonly store: LocoSyncReactStore<M>,
+    public readonly store: ModelDataStore<M>,
     public readonly relationshipDefs: R,
   ) {
     this.#listeners = new Set();
@@ -280,7 +278,7 @@ export class QueryManyWatcher<
 }
 
 // TODO: Generalize to work with many as well?
-export class QueryOneWatcher<
+export class QueryOneObserver<
   M extends Models,
   R extends ModelsRelationshipDefs<M>,
   ModelName extends keyof M & string,
@@ -300,7 +298,7 @@ export class QueryOneWatcher<
   #result: ModelResult<M, R, ModelName, Selection> | undefined;
 
   constructor(
-    public readonly store: LocoSyncReactStore<M>,
+    public readonly store: ModelDataStore<M>,
     public readonly relationshipDefs: R,
   ) {
     this.#listeners = new Set();
