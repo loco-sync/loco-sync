@@ -7,25 +7,17 @@ import React, {
   useState,
   useMemo,
 } from 'react';
-import {
-  LocoSyncClient,
-  getMutationLocalChanges,
-  createModelDataStore,
-  QueryManyObserver,
-  QueryOneObserver,
-} from '@loco-sync/client';
+import { LocoSyncClient, QueryObserver } from '@loco-sync/client';
 import type {
-  ModelsRelationshipDefs,
   ModelRelationshipSelection,
   ModelFilter,
-  Models,
-  ModelId,
   ModelResult,
   MutationFn,
-  ExtractModelsRelationshipDefs,
   ModelsSpec,
   ModelsConfig,
-  ModelDataStore,
+  ModelDataCache,
+  QueryManyResult,
+  QueryOneResult,
 } from '@loco-sync/client';
 import { useSyncExternalStore } from 'use-sync-external-store/shim';
 
@@ -49,63 +41,38 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
     <ModelName extends keyof MS['models'] & string>(
       modelName: ModelName,
       modelFilter?: ModelFilter<MS['models'], ModelName>,
-    ): ModelResult<
-      MS['models'],
-      ExtractModelsRelationshipDefs<MS>,
-      ModelName,
-      undefined
-    >[];
+    ): QueryManyResult<MS, ModelName, undefined>;
 
     <
       ModelName extends keyof MS['models'] & string,
       Selection extends ModelRelationshipSelection<
         MS['models'],
-        ExtractModelsRelationshipDefs<MS>,
+        MS['relationshipDefs'],
         ModelName
       >,
     >(
       modelName: ModelName,
       modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
       selection: Selection,
-    ): ModelResult<
-      MS['models'],
-      ExtractModelsRelationshipDefs<MS>,
-      ModelName,
-      Selection
-    >[];
+    ): QueryManyResult<MS, ModelName, Selection>;
   };
   useQueryOne: {
     <ModelName extends keyof MS['models'] & string>(
       modelName: ModelName,
       modelFilter?: ModelFilter<MS['models'], ModelName>,
-    ):
-      | ModelResult<
-          MS['models'],
-          ExtractModelsRelationshipDefs<MS>,
-          ModelName,
-          {}
-        >
-      | undefined;
-
+    ): QueryOneResult<MS, ModelName, undefined>;
     <
       ModelName extends keyof MS['models'] & string,
       Selection extends ModelRelationshipSelection<
         MS['models'],
-        ExtractModelsRelationshipDefs<MS>,
+        MS['relationshipDefs'],
         ModelName
       >,
     >(
       modelName: ModelName,
       modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
       selection: Selection,
-    ):
-      | ModelResult<
-          MS['models'],
-          ExtractModelsRelationshipDefs<MS>,
-          ModelName,
-          Selection
-        >
-      | undefined;
+    ): QueryOneResult<MS, ModelName, Selection>;
   };
   useMutation(): UseMutation<MS>;
   useIsHydrated: () => boolean;
@@ -113,7 +80,6 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
 
 type InternalContext<MS extends ModelsSpec> = {
   isHydrated: boolean;
-  store: ModelDataStore<MS['models']> | undefined;
   client: LocoSyncClient<MS> | undefined;
 };
 
@@ -121,12 +87,11 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
   config: ModelsConfig<MS>,
 ): LocoSyncReact<MS> => {
   type M = MS['models'];
-  type R = ExtractModelsRelationshipDefs<MS>;
+  type R = MS['relationshipDefs'];
   const relationshipDefs: R = config.relationshipDefs ?? {};
 
   const context = createContext<InternalContext<MS>>({
     isHydrated: false,
-    store: undefined,
     client: undefined,
   });
   const useContext = () => React.useContext(context);
@@ -134,35 +99,10 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
   const Provider: LocoSyncReactProvider<MS> = (props) => {
     const [isHydrated, setIsHydrated] = useState(false);
     const client = props.client;
-    const store = useMemo(() => createModelDataStore(), [client]);
 
     useEffect(() => {
       const unsubscribe = client.addListener((payload) => {
-        if (payload.type === 'sync') {
-          store.processMessage({
-            type: 'sync',
-            lastSyncId: payload.lastSyncId,
-            sync: payload.sync,
-          });
-        } else if (payload.type === 'startTransaction') {
-          store.processMessage({
-            type: 'startTransaction',
-            transactionId: payload.clientTransactionId,
-            changes: getMutationLocalChanges(config, payload.args),
-          });
-        } else if (payload.type === 'commitTransaction') {
-          store.processMessage({
-            type: 'commitTransaction',
-            transactionId: payload.clientTransactionId,
-            lastSyncId: payload.lastSyncId,
-          });
-        } else if (payload.type === 'rollbackTransaction') {
-          store.processMessage({
-            type: 'rollbackTransaction',
-            transactionId: payload.clientTransactionId,
-          });
-        } else if (payload.type === 'bootstrap') {
-          store.loadBootstrap(payload.bootstrap);
+        if (payload.type === 'started') {
           setIsHydrated(true);
         }
       });
@@ -170,14 +110,13 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
       client.start();
 
       return () => {
-        // TODO: Any cleanup needed on "store"?
         client.stop();
         unsubscribe();
         setIsHydrated(false);
       };
-    }, [client, store]);
+    }, [client]);
 
-    if (props.notHydratedFallback && !isHydrated) {
+    if (props.notHydratedFallback !== undefined && !isHydrated) {
       return <>{props.notHydratedFallback}</>;
     }
 
@@ -185,7 +124,6 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
       <context.Provider
         value={{
           isHydrated,
-          store,
           client,
         }}
       >
@@ -201,13 +139,13 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     modelName: ModelName,
     modelFilter?: ModelFilter<M, ModelName>,
     selection?: Selection,
-  ): ModelResult<M, R, ModelName, Selection>[] => {
-    const store = useContext().store;
-    if (!store) {
+  ): QueryManyResult<MS, ModelName, Selection> => {
+    const cache = useContext().client?.getCache();
+    if (!cache) {
       throw new Error('LocoSync context provider not found.');
     }
     return useQueryManyFromStore(
-      store,
+      cache,
       relationshipDefs,
       modelName,
       modelFilter,
@@ -222,13 +160,13 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     modelName: ModelName,
     modelFilter?: ModelFilter<M, ModelName>,
     selection?: Selection,
-  ): ModelResult<M, R, ModelName, Selection> | undefined => {
-    const store = useContext().store;
-    if (!store) {
+  ): QueryOneResult<MS, ModelName, Selection> => {
+    const cache = useContext().client?.getCache();
+    if (!cache) {
       throw new Error('LocoSync context provider not found.');
     }
     return useQueryOneFromStore(
-      store,
+      cache,
       relationshipDefs,
       modelName,
       modelFilter,
@@ -265,75 +203,85 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
 };
 
 const useQueryOneFromStore = <
-  M extends Models,
-  R extends ModelsRelationshipDefs<M>,
-  ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>,
+  MS extends ModelsSpec,
+  ModelName extends keyof MS['models'] & string,
+  Selection extends ModelRelationshipSelection<
+    MS['models'],
+    MS['relationshipDefs'],
+    ModelName
+  >,
 >(
-  store: ModelDataStore<M>,
-  relationshipDefs: R,
+  cache: ModelDataCache<MS>,
+  relationshipDefs: MS['relationshipDefs'],
   modelName: ModelName,
-  modelFilter: ModelFilter<M, ModelName> | undefined,
+  modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
   selection?: Selection,
-): ModelResult<M, R, ModelName, Selection> | undefined => {
-  const watcherRef = useRef<QueryOneObserver<M, R, ModelName, Selection>>();
+): QueryOneResult<MS, ModelName, Selection> => {
+  const observerRef = useRef<QueryObserver<MS, ModelName, Selection>>();
 
   if (
-    !watcherRef.current ||
-    watcherRef.current.store !== store ||
-    watcherRef.current.relationshipDefs !== relationshipDefs
+    !observerRef.current ||
+    observerRef.current.cache !== cache ||
+    observerRef.current.relationshipDefs !== relationshipDefs ||
+    observerRef.current.modelName !== modelName ||
+    JSON.stringify(observerRef.current.modelFilter) !==
+      JSON.stringify(modelFilter) ||
+    JSON.stringify(observerRef.current.selection) !== JSON.stringify(selection)
   ) {
-    watcherRef.current = new QueryOneObserver(store, relationshipDefs);
+    observerRef.current = new QueryObserver(
+      cache,
+      relationshipDefs,
+      modelName,
+      modelFilter,
+      selection,
+    );
   }
-  const watcher = watcherRef.current;
+  const observer = observerRef.current;
 
   return useSyncExternalStore(
-    useCallback(
-      (cb) => watcher.subscribe(cb, modelName, modelFilter, selection),
-      [
-        watcher,
-        modelName,
-        JSON.stringify(modelFilter),
-        JSON.stringify(selection),
-      ],
-    ),
-    useCallback(() => watcher.getSnapshot(), [watcher]),
+    useCallback((cb) => observer.subscribe(cb), [observer]),
+    useCallback(() => observer.getSnapshotOne(), [observer]),
   );
 };
 
 const useQueryManyFromStore = <
-  M extends Models,
-  R extends ModelsRelationshipDefs<M>,
-  ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>,
+  MS extends ModelsSpec,
+  ModelName extends keyof MS['models'] & string,
+  Selection extends ModelRelationshipSelection<
+    MS['models'],
+    MS['relationshipDefs'],
+    ModelName
+  >,
 >(
-  store: ModelDataStore<M>,
-  relationshipDefs: R,
+  cache: ModelDataCache<MS>,
+  relationshipDefs: MS['relationshipDefs'],
   modelName: ModelName,
-  modelFilter: ModelFilter<M, ModelName> | undefined,
+  modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
   selection?: Selection,
-): ModelResult<M, R, ModelName, Selection>[] => {
-  const watcherRef = useRef<QueryManyObserver<M, R, ModelName, Selection>>();
+): QueryManyResult<MS, ModelName, Selection> => {
+  const observerRef = useRef<QueryObserver<MS, ModelName, Selection>>();
 
   if (
-    !watcherRef.current ||
-    watcherRef.current.store !== store ||
-    watcherRef.current.relationshipDefs !== relationshipDefs
+    !observerRef.current ||
+    observerRef.current.cache !== cache ||
+    observerRef.current.relationshipDefs !== relationshipDefs ||
+    observerRef.current.modelName !== modelName ||
+    JSON.stringify(observerRef.current.modelFilter) !==
+      JSON.stringify(modelFilter) ||
+    JSON.stringify(observerRef.current.selection) !== JSON.stringify(selection)
   ) {
-    watcherRef.current = new QueryManyObserver(store, relationshipDefs);
+    observerRef.current = new QueryObserver(
+      cache,
+      relationshipDefs,
+      modelName,
+      modelFilter,
+      selection,
+    );
   }
-  const watcher = watcherRef.current;
+  const observer = observerRef.current;
 
   return useSyncExternalStore(
-    useCallback(
-      (cb) => watcher.subscribe(cb, modelName, modelFilter, selection),
-      [
-        watcher,
-        modelName,
-        JSON.stringify(modelFilter),
-        JSON.stringify(selection),
-      ],
-    ),
-    useCallback(() => watcher.getSnapshot(), [watcher]),
+    useCallback((cb) => observer.subscribe(cb), [observer]),
+    useCallback(() => observer.getSnapshotMany(), [observer]),
   );
 };

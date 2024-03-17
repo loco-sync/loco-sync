@@ -1,4 +1,5 @@
-import type { Models, ModelData, ModelFilter } from './core';
+import type { Models, ModelData, ModelFilter, ModelsSpec } from './core';
+import type { ModelDataCache } from './model-data-cache';
 import type { ModelDataStore } from './model-data-store';
 import type {
   ModelRelationshipDef,
@@ -81,7 +82,7 @@ function applyRelationships<
         filter,
       );
       unsubscribers.push(
-        store.subMany(relationshipDef.referencesModelName, filter, listener),
+        store.subscribe(relationshipDef.referencesModelName, filter, listener),
       );
       const oneReferencedModel = referencedModels[0];
 
@@ -118,7 +119,7 @@ function applyRelationships<
         filter,
       );
       unsubscribers.push(
-        store.subMany(relationshipDef.referencesModelName, filter, listener),
+        store.subscribe(relationshipDef.referencesModelName, filter, listener),
       );
 
       const many: ModelResult<M, R, ReferencedModelName, SubSelection>[] = [];
@@ -173,50 +174,75 @@ function filterForModelRelationship<
   return filter;
 }
 
-export class QueryManyObserver<
-  M extends Models,
-  R extends ModelsRelationshipDefs<M>,
-  ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>,
+export class QueryObserver<
+  MS extends ModelsSpec,
+  ModelName extends keyof MS['models'] & string,
+  Selection extends ModelRelationshipSelection<
+    MS['models'],
+    MS['relationshipDefs'],
+    ModelName
+  >,
 > {
   #listeners: Set<() => void>;
+  #isHydrated: boolean = false;
 
   #current:
     | {
-        modelName: ModelName;
-        modelFilter: ModelFilter<M, ModelName> | undefined;
-        selection: Selection | undefined;
-        visitResults: VisitResult<M, R, ModelName, Selection>[];
+        visitResults: VisitResult<
+          MS['models'],
+          MS['relationshipDefs'],
+          ModelName,
+          Selection
+        >[];
         baseUnsubscriber: () => void;
       }
     | undefined;
-  #result: ModelResult<M, R, ModelName, Selection>[];
+  #resultMany: QueryManyResult<MS, ModelName, Selection>;
+  #resultOne: QueryOneResult<MS, ModelName, Selection>;
 
   constructor(
-    public readonly store: ModelDataStore<M>,
-    public readonly relationshipDefs: R,
+    public readonly cache: ModelDataCache<MS>,
+    public readonly relationshipDefs: MS['relationshipDefs'],
+    public readonly modelName: ModelName,
+    public readonly modelFilter:
+      | ModelFilter<MS['models'], ModelName>
+      | undefined,
+    public readonly selection: Selection | undefined,
   ) {
     this.#listeners = new Set();
-    this.#result = [];
+    this.#resultMany = { data: [], isHydrated: false };
+    this.#resultOne = { data: undefined, isHydrated: false };
+    this.cache.addObserver(this).then(() => {
+      this.#isHydrated = true;
+      this.onChange();
+    });
   }
 
-  private refresh(
-    modelName: ModelName,
-    modelFilter: ModelFilter<M, ModelName> | undefined,
-    selection: Selection | undefined,
-  ) {
-    const baseModelData = this.store.getMany(modelName, modelFilter);
-    const baseUnsubscriber = this.store.subMany(modelName, modelFilter, () =>
-      this.onChange(),
+  private refresh() {
+    if (!this.#isHydrated) {
+      return;
+    }
+
+    const store = this.cache.getStore();
+    const baseModelData = store.getMany(this.modelName, this.modelFilter);
+    const baseUnsubscriber = store.subscribe(
+      this.modelName,
+      this.modelFilter,
+      () => this.onChange(),
     );
-    const visitResults: VisitResult<M, R, ModelName, Selection>[] = [];
+    const visitResults: VisitResult<
+      MS['models'],
+      MS['relationshipDefs'],
+      ModelName,
+      Selection
+    >[] = [];
     for (const data of baseModelData) {
       const visitResult = applyRelationships(
-        modelName,
+        this.modelName,
         data,
-        selection,
+        this.selection,
         this.relationshipDefs,
-        this.store,
+        store,
         () => this.onChange(),
       );
       if (visitResult) {
@@ -225,155 +251,95 @@ export class QueryManyObserver<
     }
 
     this.#current = {
-      modelName,
-      modelFilter,
-      selection,
       visitResults,
       baseUnsubscriber,
     };
-    this.#result = visitResults.map((r) => r.result);
-  }
-
-  // At some point this should be smart enough to only un and re-subscribe to the parts that changed
-  private onChange() {
-    if (!this.#current) {
-      return;
-    }
-
-    // Unsubscribe current listeners
-    this.#current.baseUnsubscriber();
-    for (const { unsubscribers } of this.#current.visitResults) {
-      for (const unsubscribe of unsubscribers) {
-        unsubscribe();
-      }
-    }
-
-    // Resubscribe and update results
-    this.refresh(
-      this.#current.modelName,
-      this.#current.modelFilter,
-      this.#current.selection,
-    );
-
-    for (const callback of this.#listeners) {
-      callback();
-    }
-  }
-
-  subscribe(
-    callback: () => void,
-    modelName: ModelName,
-    modelFilter: ModelFilter<M, ModelName> | undefined,
-    selection: Selection | undefined,
-  ) {
-    this.refresh(modelName, modelFilter, selection);
-
-    this.#listeners.add(callback);
-    return () => this.#listeners.delete(callback);
-  }
-
-  getSnapshot() {
-    return this.#result;
-  }
-}
-
-// TODO: Generalize to work with many as well?
-export class QueryOneObserver<
-  M extends Models,
-  R extends ModelsRelationshipDefs<M>,
-  ModelName extends keyof M & string,
-  Selection extends ModelRelationshipSelection<M, R, ModelName>,
-> {
-  #listeners: Set<() => void>;
-
-  #current:
-    | {
-        modelName: ModelName;
-        selection: Selection | undefined;
-        modelFilter: ModelFilter<M, ModelName> | undefined;
-        visitResult: VisitResult<M, R, ModelName, Selection> | undefined;
-        baseUnsubscriber: () => void;
-      }
-    | undefined;
-  #result: ModelResult<M, R, ModelName, Selection> | undefined;
-
-  constructor(
-    public readonly store: ModelDataStore<M>,
-    public readonly relationshipDefs: R,
-  ) {
-    this.#listeners = new Set();
-    this.#result = undefined;
-  }
-
-  private refresh(
-    modelName: ModelName,
-    modelFilter: ModelFilter<M, ModelName> | undefined,
-    selection: Selection | undefined,
-  ) {
-    const baseModelData = this.store.getOne(modelName, modelFilter);
-    const baseUnsubscriber = this.store.subOne(modelName, modelFilter, () =>
-      this.onChange(),
-    );
-    const visitResult =
-      baseModelData &&
-      applyRelationships(
-        modelName,
-        baseModelData,
-        selection,
-        this.relationshipDefs,
-        this.store,
-        () => this.onChange(),
-      );
-
-    this.#current = {
-      modelName,
-      modelFilter,
-      selection,
-      visitResult,
-      baseUnsubscriber,
+    this.#resultMany = {
+      data: visitResults.map((r) => r.result),
+      isHydrated: true,
     };
-    this.#result = visitResult?.result;
+    this.#resultOne = {
+      data: visitResults[0]?.result,
+      isHydrated: true,
+    };
   }
 
   // At some point this should be smart enough to only un and re-subscribe to the parts that changed
   private onChange() {
-    if (!this.#current) {
-      return;
-    }
-
-    // Unsubscribe current listeners
-    this.#current.baseUnsubscriber();
-    if (this.#current.visitResult) {
-      for (const unsubscribe of this.#current.visitResult.unsubscribers) {
-        unsubscribe();
+    if (this.#current) {
+      // Unsubscribe current listeners
+      this.#current.baseUnsubscriber();
+      for (const { unsubscribers } of this.#current.visitResults) {
+        for (const unsubscribe of unsubscribers) {
+          unsubscribe();
+        }
       }
     }
 
     // Resubscribe and update results
-    this.refresh(
-      this.#current.modelName,
-      this.#current.modelFilter,
-      this.#current.selection,
-    );
+    this.refresh();
 
     for (const callback of this.#listeners) {
       callback();
     }
   }
 
-  subscribe(
-    callback: () => void,
-    modelName: ModelName,
-    modelFilter: ModelFilter<M, ModelName> | undefined,
-    selection: Selection | undefined,
-  ) {
-    this.refresh(modelName, modelFilter, selection);
+  subscribe(callback: () => void) {
+    this.refresh();
 
     this.#listeners.add(callback);
     return () => this.#listeners.delete(callback);
   }
 
-  getSnapshot() {
-    return this.#result;
+  unsubscribe(callback: () => void) {
+    this.#listeners.delete(callback);
+    if (this.#listeners.size === 0) {
+      this.cache.removeObserver(this);
+    }
+  }
+
+  getSnapshotMany(): QueryManyResult<MS, ModelName, Selection> {
+    return this.#resultMany;
+  }
+
+  getSnapshotOne(): QueryOneResult<MS, ModelName, Selection> {
+    return this.#resultOne;
   }
 }
+
+export type QueryOneResult<
+  MS extends ModelsSpec,
+  ModelName extends keyof MS['models'] & string,
+  Selection extends
+    | ModelRelationshipSelection<
+        MS['models'],
+        MS['relationshipDefs'],
+        ModelName
+      >
+    | undefined,
+> = {
+  data:
+    | ModelResult<MS['models'], MS['relationshipDefs'], ModelName, Selection>
+    | undefined;
+  isHydrated: boolean;
+};
+
+export type QueryManyResult<
+  MS extends ModelsSpec,
+  ModelName extends keyof MS['models'] & string,
+  Selection extends
+    | ModelRelationshipSelection<
+        MS['models'],
+        MS['relationshipDefs'],
+        ModelName
+      >
+    | undefined,
+> = {
+  data: ModelResult<
+    MS['models'],
+    MS['relationshipDefs'],
+    ModelName,
+    Selection
+  >[];
+  isHydrated: boolean;
+};

@@ -37,12 +37,7 @@ export type ModelDataStore<M extends Models> = {
   loadBootstrap: (payload: BootstrapPayload<M>) => void;
   processMessage: (message: ToProcessMessage<M>) => void;
 
-  subMany: <ModelName extends keyof M & string>(
-    modelName: ModelName,
-    filter: ModelFilter<M, ModelName> | undefined,
-    listener: () => void,
-  ) => () => void;
-  subOne: <ModelName extends keyof M & string>(
+  subscribe: <ModelName extends keyof M & string>(
     modelName: ModelName,
     filter: ModelFilter<M, ModelName> | undefined,
     listener: () => void,
@@ -362,23 +357,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     }
   };
 
-  // TODO: This is the same as subMany now, does there need to be any difference?
-  const subOne = <ModelName extends keyof M & string>(
-    modelName: ModelName,
-    filter: ModelFilter<M, ModelName> | undefined,
-    listener: () => void,
-  ) => {
-    let modelNameListeners = allModelNameListeners.get(modelName);
-    if (!modelNameListeners) {
-      modelNameListeners = new Set();
-      allModelNameListeners.set(modelName, modelNameListeners);
-    }
-    const filterListener = { filter, listener };
-    modelNameListeners.add(filterListener);
-    return () => modelNameListeners?.delete(filterListener);
-  };
-
-  const subMany = <ModelName extends keyof M & string>(
+  const subscribe = <ModelName extends keyof M & string>(
     modelName: ModelName,
     filter: ModelFilter<M, ModelName> | undefined,
     listener: () => void,
@@ -476,8 +455,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     getMany,
     processMessage,
     loadBootstrap,
-    subOne,
-    subMany,
+    subscribe,
     listenerCount,
     logModelsData,
   };

@@ -12,9 +12,8 @@ test('Component updates after rendering with a new modelId passed to useQueryOne
   );
 
   // Use find instead of get because of loco-sync hydration
-  const authorSpan = await screen.findByText(/Author/);
-
-  expect(authorSpan).toHaveTextContent('Author:1 has 1 post(s)');
+  const authorSpan1 = await screen.findByText(/Author/);
+  expect(authorSpan1).toHaveTextContent('Author:1 has 1 post(s)');
 
   rerender(
     <Provider notHydratedFallback={null} client={client}>
@@ -22,7 +21,8 @@ test('Component updates after rendering with a new modelId passed to useQueryOne
     </Provider>,
   );
 
-  expect(authorSpan).toHaveTextContent('Author:2 has 2 post(s)');
+  const authorSpan2 = await screen.findByText(/Author/);
+  expect(authorSpan2).toHaveTextContent('Author:2 has 2 post(s)');
 });
 
 const bootstrap = {
@@ -64,9 +64,12 @@ const { config, client } = setup(bootstrap);
 const { Provider, useQuery } = createLocoSyncReact(config);
 
 const Test = ({ authorId }: { authorId: string }) => {
-  const data = useQuery('Post', {
+  const { data, isHydrated } = useQuery('Post', {
     authorId,
   });
+  if (!isHydrated) {
+    return null;
+  }
 
   if (!data) {
     return <span>Not found</span>;

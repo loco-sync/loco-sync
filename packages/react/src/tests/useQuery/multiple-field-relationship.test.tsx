@@ -58,7 +58,7 @@ const { config, client } = setup(bootstrap);
 const { Provider, useQueryOne } = createLocoSyncReact(config);
 
 const Test = ({ id }: { id: string }) => {
-  const data = useQueryOne(
+  const { data } = useQueryOne(
     'PostTag',
     { id },
     {

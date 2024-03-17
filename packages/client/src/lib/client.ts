@@ -1,45 +1,24 @@
-import type {
-  BootstrapPayload,
-  Models,
-  SyncAction,
-  ModelsSpec,
-  MutationArgs,
-  MutationOptions,
+import {
+  type SyncAction,
+  type ModelsSpec,
+  type MutationArgs,
+  type MutationOptions,
+  getMutationLocalChanges,
+  type ModelsConfig,
 } from './core';
+import { ModelDataCache } from './model-data-cache';
 import type { NetworkAdapter } from './network';
 import type { StorageAdapter } from './storage';
 
 export type LocoSyncOptions<MS extends ModelsSpec> = {
   network: NetworkAdapter<MS>;
   storage: StorageAdapter<MS>;
+  config: ModelsConfig<MS>;
 };
 
-export type LocalSyncClientListener<MS extends ModelsSpec> = (
-  args:
-    | {
-        type: 'sync';
-        lastSyncId: number;
-        sync: SyncAction<MS['models'], keyof MS['models'] & string>[];
-      }
-    | {
-        type: 'startTransaction';
-        clientTransactionId: number;
-        args: MutationArgs<MS>;
-      }
-    | {
-        type: 'commitTransaction';
-        clientTransactionId: number;
-        lastSyncId: number;
-      }
-    | {
-        type: 'rollbackTransaction';
-        clientTransactionId: number;
-      }
-    | {
-        type: 'bootstrap';
-        bootstrap: BootstrapPayload<MS['models']>;
-      },
-) => void;
+export type LocalSyncClientListener<MS extends ModelsSpec> = (args: {
+  type: 'started';
+}) => void;
 
 type CombinedPendingTransaction<MS extends ModelsSpec> = {
   clientTransactionId: number;
@@ -57,6 +36,8 @@ export type LocoSyncClientStatus =
 export class LocoSyncClient<MS extends ModelsSpec> {
   #network: NetworkAdapter<MS>;
   #storage: StorageAdapter<MS>;
+  #config: ModelsConfig<MS>;
+  #cache: ModelDataCache<MS>;
 
   #listeners: Set<LocalSyncClientListener<MS>>;
   #lastClientTransactionId: number;
@@ -72,7 +53,9 @@ export class LocoSyncClient<MS extends ModelsSpec> {
 
   constructor(opts: LocoSyncOptions<MS>) {
     this.#network = opts.network;
+    this.#config = opts.config;
     this.#storage = opts.storage;
+    this.#cache = new ModelDataCache(this.#storage);
 
     this.#listeners = new Set();
     this.#futureSyncActions = [];
@@ -83,6 +66,17 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#status = 'ready';
     this.#pushInFlight = false;
     this.#catchUpSyncCompleted = false;
+  }
+
+  getCache() {
+    return this.#cache;
+  }
+
+  addListener(listener: LocalSyncClientListener<MS>) {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
   }
 
   // TODO: Should this return a result of some sort?
@@ -103,14 +97,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       const { metadata, pendingTransactions } = result;
       this.#lastSyncId = metadata.lastSyncId;
 
-      const bootstrap = await this.#storage.loadBootstrap();
-      for (const cb of this.#listeners.values()) {
-        cb({
-          type: 'bootstrap',
-          bootstrap,
-        });
-      }
-
       const combinedPendingTransactions: CombinedPendingTransaction<MS>[] = [];
       for (const { args, id: storageTransactionId } of pendingTransactions) {
         const clientTransactionId = ++this.#lastClientTransactionId;
@@ -130,13 +116,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
           bootstrapResult.value.lastSyncId,
         );
         this.#lastSyncId = bootstrapResult.value.lastSyncId;
-
-        for (const cb of this.#listeners.values()) {
-          cb({
-            type: 'bootstrap',
-            bootstrap: bootstrapResult.value.bootstrap,
-          });
-        }
       } else {
         // TODO: Should probably retry in this case
         this.#status = 'failed';
@@ -153,9 +132,11 @@ export class LocoSyncClient<MS extends ModelsSpec> {
           if (this.#catchUpSyncCompleted) {
             // TODO: Does ordering of sending sync events to memory vs. storage matter?
             // storage first seems safer, but also slower?
-            for (const cb of this.#listeners.values()) {
-              cb({ type: 'sync', lastSyncId, sync });
-            }
+            this.#cache.processMessage({
+              type: 'sync',
+              lastSyncId,
+              sync,
+            });
             await this.#storage.applySyncActions(lastSyncId, sync);
           } else {
             this.#futureSyncActions.push(...sync);
@@ -168,11 +149,9 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     );
 
     this.#status = 'running';
-  }
-
-  addListener(listener: LocalSyncClientListener<MS>): () => void {
-    this.#listeners.add(listener);
-    return () => this.#listeners.delete(listener);
+    for (const listener of this.#listeners) {
+      listener({ type: 'started' });
+    }
   }
 
   stop() {
@@ -212,13 +191,11 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#lastClientTransactionId += 1;
     const clientTransactionId = this.#lastClientTransactionId;
 
-    for (const cb of this.#listeners.values()) {
-      cb({
-        type: 'startTransaction',
-        clientTransactionId,
-        args,
-      });
-    }
+    this.#cache.processMessage({
+      type: 'startTransaction',
+      transactionId: clientTransactionId,
+      changes: getMutationLocalChanges(this.#config, args),
+    });
 
     const storageTransactionId =
       await this.#storage.createPendingTransaction(args);
@@ -256,9 +233,11 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       }
 
       const fullSync = result.value.sync.concat(this.#futureSyncActions);
-      for (const cb of this.#listeners.values()) {
-        cb({ type: 'sync', lastSyncId: toSyncId, sync: fullSync });
-      }
+      this.#cache.processMessage({
+        type: 'sync',
+        lastSyncId: toSyncId,
+        sync: fullSync,
+      });
       await this.#storage.applySyncActions(toSyncId, fullSync);
       this.#futureSyncActions = [];
       this.#lastSyncId = toSyncId;
@@ -299,12 +278,10 @@ export class LocoSyncClient<MS extends ModelsSpec> {
           await this.#storage.removePendingTransaction(
             nextTransaction.storageTransactionId,
           );
-          for (const cb of this.#listeners.values()) {
-            cb({
-              type: 'rollbackTransaction',
-              clientTransactionId: nextTransaction.clientTransactionId,
-            });
-          }
+          this.#cache.processMessage({
+            type: 'rollbackTransaction',
+            transactionId: nextTransaction.clientTransactionId,
+          });
           nextTransaction?.options?.onError?.();
         } else {
           // Only retry on network or auth errors, and re-auth first if relevant
@@ -321,13 +298,11 @@ export class LocoSyncClient<MS extends ModelsSpec> {
         await this.#storage.removePendingTransaction(
           nextTransaction.storageTransactionId,
         );
-        for (const cb of this.#listeners.values()) {
-          cb({
-            type: 'commitTransaction',
-            clientTransactionId: nextTransaction.clientTransactionId,
-            lastSyncId: result.value.lastSyncId,
-          });
-        }
+        this.#cache.processMessage({
+          type: 'commitTransaction',
+          transactionId: nextTransaction.clientTransactionId,
+          lastSyncId: result.value.lastSyncId,
+        });
         nextTransaction?.options?.onSuccess?.();
       }
     } catch (e) {

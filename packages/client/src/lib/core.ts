@@ -4,7 +4,7 @@ import type { ModelsRelationshipDefs } from './relationships';
 
 export type ModelsSpec<M extends Models = {}, MArgs = unknown> = {
   models: M;
-  relationshipDefs?: ModelsRelationshipDefs<M>;
+  relationshipDefs: ModelsRelationshipDefs<M>;
   mutationArgs?: MArgs;
 };
 
@@ -53,11 +53,6 @@ export type MutationFn<MS extends ModelsSpec> = (
 ) => void;
 
 export type ModelsWithKeys<ModelName extends string> = Record<ModelName, Model>;
-
-export type ExtractModelsRelationshipDefs<MS extends ModelsSpec> =
-  MS['relationshipDefs'] extends ModelsRelationshipDefs<MS['models']>
-    ? MS['relationshipDefs']
-    : {};
 
 export type Model = { id: string } & Record<string, unknown>;
 export type ModelData<

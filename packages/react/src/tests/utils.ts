@@ -164,6 +164,7 @@ export const setup = (
   const client = new LocoSyncClient({
     network: networkAdapter,
     storage: storageAdapter,
+    config,
   });
 
   const sendMessage = (message: NetworkMessage<M>) => {

@@ -12,9 +12,8 @@ test('Component updates after rendering with a new modelId passed to useQueryOne
   );
 
   // Use find instead of get because of loco-sync hydration
-  const groupSpan = await screen.findByText(/Group/);
-
-  expect(groupSpan).toHaveTextContent('Group:1 has name "???"');
+  const groupSpan1 = await screen.findByText(/Group/);
+  expect(groupSpan1).toHaveTextContent('Group:1 has name "???"');
 
   rerender(
     <Provider notHydratedFallback={null} client={client}>
@@ -22,7 +21,8 @@ test('Component updates after rendering with a new modelId passed to useQueryOne
     </Provider>,
   );
 
-  expect(groupSpan).toHaveTextContent('Group:2 has name "!!!"');
+  const groupSpan2 = await screen.findByText(/Group/);
+  expect(groupSpan2).toHaveTextContent('Group:2 has name "!!!"');
 });
 
 const bootstrap = {
@@ -42,7 +42,11 @@ const { config, client } = setup(bootstrap);
 const { Provider, useQueryOne } = createLocoSyncReact(config);
 
 const Test = ({ id }: { id: string }) => {
-  const data = useQueryOne('Group', { id });
+  const { data, isHydrated } = useQueryOne('Group', { id });
+
+  if (!isHydrated) {
+    return null;
+  }
 
   if (!data) {
     return <span>Not found</span>;

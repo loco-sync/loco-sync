@@ -51,7 +51,7 @@ const { config, client } = setup(bootstrap, {
 const { Provider, useQueryOne, useMutation } = createLocoSyncReact(config);
 
 const Test1 = ({ onError }: { onError: () => void }) => {
-  const data = useQueryOne('Group', { id: '1' });
+  const { data } = useQueryOne('Group', { id: '1' });
   const mutation = useMutation();
 
   if (!data) {

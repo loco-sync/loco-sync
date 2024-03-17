@@ -76,6 +76,7 @@ const storageAdapter: StorageAdapter<MS> = {
 export const client = new LocoSyncClient({
   network: networkAdapter,
   storage: storageAdapter,
+  config,
 });
 
 const syncAction: SyncAction<M, 'Todo'> = {
