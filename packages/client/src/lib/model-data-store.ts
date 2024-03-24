@@ -100,7 +100,6 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
 
   const allModelNameListeners: Map<keyof M & string, FilterListeners> =
     new Map();
-  const allModelNameIdListeners: Map<string, Listeners> = new Map();
 
   let lastSyncId = 0;
   let pendingTransactions: PendingTransaction<M>[] = [];
@@ -165,6 +164,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     modelId: ModelId,
     data: ModelData<M, ModelName>,
     maybeChangeSnapshots: ModelChangeSnapshot<M, ModelName>[] | undefined,
+    listeners: Listeners
   ) => {
     let modelMap = modelsData.get(modelName);
     if (!modelMap) {
@@ -186,7 +186,8 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
       changeSnapshots: newChangeSnapshots,
       optimisticData: newOptimisticData,
     });
-    notifyListenersForModel(
+    addListenersForModel(
+      listeners,
       modelName,
       modelId,
       prev?.optimisticData,
@@ -197,6 +198,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
   const deleteData = <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId,
+    listeners: Listeners
   ) => {
     const modelMap = modelsData.get(modelName);
     if (modelMap) {
@@ -211,7 +213,8 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
       }
 
       modelMap.delete(modelId);
-      notifyListenersForModel(
+      addListenersForModel(
+        listeners,
         modelName,
         modelId,
         prev?.optimisticData,
@@ -224,6 +227,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     modelName: ModelName,
     modelId: ModelId,
     changeSnapshots: readonly ModelChangeSnapshot<M, ModelName>[],
+    listeners: Listeners
   ) => {
     let modelMap = modelsData.get(modelName);
     if (!modelMap) {
@@ -244,7 +248,8 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
       changeSnapshots,
       optimisticData: newOptimisticData,
     });
-    notifyListenersForModel(
+    addListenersForModel(
+      listeners,
       modelName,
       modelId,
       prev?.optimisticData,
@@ -256,8 +261,12 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     modelName: ModelName,
     data: ModelData<M, ModelName>[],
   ) => {
+    const listeners: Listeners = new Set();
     for (const d of data) {
-      setData(modelName, d.id, d, undefined);
+      setData(modelName, d.id, d, undefined, listeners);
+    }
+    for (const listener of listeners) {
+      listener();
     }
   };
 
@@ -339,6 +348,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     }
 
     const processedModels = new Set<string>();
+    const listeners: Listeners = new Set();
 
     for (const patch of modelDataPatches) {
       if (patch.data) {
@@ -350,10 +360,11 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
           patch.modelId,
           patch.data,
           maybeModelChangeSnapshots?.changeSnapshots,
+          listeners
         );
       } else {
         // TODO: Would there ever be changeSnapshots for this case?
-        deleteData(patch.modelName, patch.modelId);
+        deleteData(patch.modelName, patch.modelId, listeners);
       }
       processedModels.add(getModelNameId(patch.modelName, patch.modelId));
     }
@@ -366,8 +377,13 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
           patch.modelName,
           patch.modelId,
           patch.changeSnapshots,
+          listeners
         );
       }
+    }
+
+    for (const listener of listeners) {
+      listener();
     }
   };
 
@@ -386,56 +402,37 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     return () => modelNameListeners?.delete(filterListener);
   };
 
-  const notifyListenersForModel = <ModelName extends keyof M & string>(
+  const addListenersForModel = <ModelName extends keyof M & string>(
+    listeners: Listeners,
     modelName: ModelName,
     modelId: ModelId,
     prevData: ModelData<M, ModelName> | undefined,
     nextData: ModelData<M, ModelName> | undefined,
   ) => {
-    const listenersToCall: Array<() => void> = [];
-
     const modelNameListeners = allModelNameListeners.get(modelName);
     if (modelNameListeners) {
       for (const { filter, listener } of modelNameListeners.values()) {
         if (!filter) {
-          listenersToCall.push(listener);
+          listeners.add(listener);
         } else if (prevData && dataPassesFilter(prevData, filter)) {
-          listenersToCall.push(listener);
+          listeners.add(listener);
         } else if (nextData && dataPassesFilter(nextData, filter)) {
-          listenersToCall.push(listener);
+          listeners.add(listener);
         }
       }
-    }
-
-    const modelNameIdListeners = allModelNameIdListeners.get(
-      getModelNameId(modelName, modelId),
-    );
-    if (modelNameIdListeners) {
-      for (const listener of modelNameIdListeners.values()) {
-        listenersToCall.push(listener);
-      }
-    }
-
-    for (const listener of listenersToCall) {
-      listener();
     }
   };
 
   const notifyAllListeners = () => {
-    const listenersToCall: Array<() => void> = [];
+    const listeners: Listeners = new Set();
 
     for (const filterListeners of allModelNameListeners.values()) {
       for (const { listener } of filterListeners.values()) {
-        listenersToCall.push(listener);
-      }
-    }
-    for (const listeners of allModelNameIdListeners.values()) {
-      for (const listener of listeners.values()) {
-        listenersToCall.push(listener);
+        listeners.add(listener);
       }
     }
 
-    for (const listener of listenersToCall) {
+    for (const listener of listeners) {
       listener();
     }
   };
@@ -450,9 +447,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     for (const l of allModelNameListeners.values()) {
       count += l.size;
     }
-    for (const l of allModelNameIdListeners.values()) {
-      count += l.size;
-    }
+
     return count;
   };
 
