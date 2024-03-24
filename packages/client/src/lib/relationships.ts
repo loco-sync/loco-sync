@@ -1,4 +1,4 @@
-import type { ModelData, Models } from './core';
+import type { ModelData, ModelField, Models } from './core';
 import type { Simplify } from './typeUtils';
 
 // Only difference in this file is the imports
@@ -47,11 +47,6 @@ type MatchingModelFields<
 > = {
   [Key in keyof TFields]: ModelField<M, ReferencesModelName>;
 };
-
-type ModelField<
-  M extends Models,
-  ModelName extends keyof M & string,
-> = keyof ModelData<M, ModelName>;
 
 export const many = <
   M extends Models,

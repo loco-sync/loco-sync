@@ -71,6 +71,7 @@ const storageAdapter: StorageAdapter<MS> = {
   createPendingTransaction: async () => 0,
   saveBootstrap: async () => {},
   loadBootstrap: async () => ({}),
+  loadModelData: async () => [],
 };
 
 export const client = new LocoSyncClient({

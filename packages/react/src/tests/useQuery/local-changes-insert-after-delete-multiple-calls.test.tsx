@@ -50,13 +50,9 @@ const { config, client } = setup(bootstrap);
 const { Provider, useQueryOne, useMutation } = createLocoSyncReact(config);
 
 const Test1 = () => {
-  const { data, isHydrated } = useQueryOne('Post', { id: '1' });
+  const { data } = useQueryOne('Post', { id: '1' });
   const mutation = useMutation();
   const [clicked, setClicked] = useState(false);
-
-  if (!isHydrated) {
-    return null;
-  }
 
   return (
     <div>

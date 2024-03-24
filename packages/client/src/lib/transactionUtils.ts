@@ -115,6 +115,7 @@ export type StateUpdate<M extends Models> = {
     | { transactionId: number; lastSyncId: number }
     | undefined;
   removePendingTransactionIds: readonly number[];
+  errors?: string[];
 };
 
 export const getStateUpdate = <M extends Models>(
@@ -281,12 +282,12 @@ function getUpdatedStateForSync<M extends Models>(
     );
   }
 
-  if (errorMessages.length > 0) {
-    return {
-      ok: false,
-      error: errorMessages,
-    };
-  }
+  // if (errorMessages.length > 0) {
+  //   return {
+  //     ok: false,
+  //     error: errorMessages,
+  //   };
+  // }
 
   return {
     ok: true,
@@ -299,6 +300,7 @@ function getUpdatedStateForSync<M extends Models>(
       removePendingTransactionIds: removedTransactions.map(
         (t) => t.transactionId,
       ),
+      errors: errorMessages,
     },
   };
 }

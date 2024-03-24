@@ -1,9 +1,12 @@
-import type {
-  BootstrapPayload,
-  StorageAdapter,
-  Metadata,
-  ModelsConfig,
-  ModelsSpec,
+import {
+  type BootstrapPayload,
+  type StorageAdapter,
+  type Metadata,
+  type ModelsConfig,
+  type ModelsSpec,
+  type Models,
+  type ModelFilter,
+  type ModelIndex,
 } from '@loco-sync/client';
 import { openDB, type IDBPDatabase } from 'idb';
 
@@ -17,7 +20,7 @@ const DEFAULT_METADATA: Metadata = {
   lastUpdatedAt: new Date(Date.UTC(1970, 0)).toISOString(),
 };
 
-type CreateLocoSyncIdbClientOptions = {
+export type CreateLocoSyncIdbAdapterOptions<MS extends ModelsSpec> = {
   onBlocking?: (
     currentVersion: number,
     blockedVersion: number | null,
@@ -36,7 +39,7 @@ type CreateLocoSyncIdbClientOptions = {
 export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
   namespace: string,
   config: ModelsConfig<MS>,
-  options?: CreateLocoSyncIdbClientOptions,
+  options?: CreateLocoSyncIdbAdapterOptions<MS>,
 ): StorageAdapter<MS> => {
   type M = MS['models'];
 
@@ -46,9 +49,13 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
   const dbPromise = openDB(namespace, version, {
     upgrade(db, oldVersion, newVersion, transaction, event) {
       for (const modelName in config.modelDefs) {
-        db.createObjectStore(modelName, {
+        const store = db.createObjectStore(modelName, {
           keyPath: 'id',
         });
+        const indexes = config.indexes?.[modelName as keyof M & string] ?? [];
+        for (const index of indexes) {
+          store.createIndex(index.name, index.fields);
+        }
       }
 
       db.createObjectStore(_TRANSACTIONS, {
@@ -182,6 +189,20 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
 
       return result;
     },
+    loadModelData: async (modelName, args) => {
+      const db = await getDb();
+      if (!args) {
+        return db.getAll(modelName);
+      } else {
+        const { index, filter } = args;
+        const data = await db.getAllFromIndex(
+          modelName,
+          index.name,
+          formatFilterForIndex(index, filter),
+        );
+        return data;
+      }
+    },
     saveBootstrap: async (payload, syncId) => {
       const db = await getDb();
 
@@ -223,3 +244,17 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
     },
   };
 };
+
+function formatFilterForIndex<
+  M extends Models,
+  ModelName extends keyof M & string,
+>(
+  index: ModelIndex<M, ModelName>,
+  filter: ModelFilter<M, ModelName>,
+): IDBValidKey {
+  const result = [];
+  for (const field of index.fields) {
+    result.push(filter[field]);
+  }
+  return result as IDBValidKey;
+}

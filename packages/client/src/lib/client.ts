@@ -55,7 +55,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#network = opts.network;
     this.#config = opts.config;
     this.#storage = opts.storage;
-    this.#cache = new ModelDataCache(this.#storage);
 
     this.#listeners = new Set();
     this.#futureSyncActions = [];
@@ -66,10 +65,16 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#status = 'ready';
     this.#pushInFlight = false;
     this.#catchUpSyncCompleted = false;
+
+    this.#cache = new ModelDataCache(this, this.#config);
   }
 
   getCache() {
     return this.#cache;
+  }
+
+  getStorage() {
+    return this.#storage;
   }
 
   addListener(listener: LocalSyncClientListener<MS>) {
@@ -194,7 +199,11 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#cache.processMessage({
       type: 'startTransaction',
       transactionId: clientTransactionId,
-      changes: getMutationLocalChanges(this.#config, args),
+      changes: getMutationLocalChanges(
+        this.#config,
+        args,
+        this.#cache.getStore(),
+      ),
     });
 
     const storageTransactionId =

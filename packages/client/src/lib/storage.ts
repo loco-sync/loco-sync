@@ -4,7 +4,10 @@ import type {
   SyncAction,
   MutationArgs,
   ModelsSpec,
+  ModelFilter,
+  ModelData,
 } from './core';
+import type { ModelIndex } from './indexes';
 
 type PendingTransaction<MS extends ModelsSpec> = {
   id: number;
@@ -55,6 +58,16 @@ export interface StorageAdapter<MS extends ModelsSpec> {
    * Load all model data to bootstrap the client
    */
   loadBootstrap(): Promise<BootstrapPayload<MS['models']>>;
+
+  loadModelData<ModelName extends keyof MS['models'] & string>(
+    modelName: ModelName,
+    args:
+      | {
+          index: ModelIndex<MS['models'], ModelName>;
+          filter: ModelFilter<MS['models'], ModelName>;
+        }
+      | undefined,
+  ): Promise<ModelData<MS['models'], ModelName>[]>;
 
   /**
    * Load all model data to bootstrap the client

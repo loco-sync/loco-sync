@@ -1,6 +1,7 @@
 import { z } from 'zod';
 // TODO: Maybe move the ModelsRelationshipDefs types to this file?
 import type { ModelsRelationshipDefs } from './relationships';
+import type { ModelsIndexes } from './indexes';
 
 export type ModelsSpec<M extends Models = {}, MArgs = unknown> = {
   models: M;
@@ -19,22 +20,34 @@ export type ModelDefs<M extends Models> = {
 };
 
 export type ModelDef = {
+  preload?: boolean;
   schemaVersion: number;
 };
 
 export type ModelsConfig<MS extends AnyModelsSpec> = {
   modelDefs: ModelDefs<MS['models']>;
   relationshipDefs?: ModelsRelationshipDefs<MS['models']>;
-  parsers?: ModelsParsers<MS['models']>;
+  indexes?: ModelsIndexes<MS['models']>;
   mutationDefs?: MutationDefs<MS>;
 };
 
-export type ModelsParsers<M extends Models> = {
-  [ModelName in keyof M & string]: z.ZodType<{ id: string }>;
+type MutationDefs<MS extends ModelsSpec> = {
+  getChanges: (
+    args: MS['mutationArgs'],
+    store: ReadonlyModelDataStore<MS['models']>,
+  ) => LocalChanges<MS['models']>;
 };
 
-type MutationDefs<MS extends ModelsSpec> = {
-  getChanges: (args: MS['mutationArgs']) => LocalChanges<MS['models']>;
+type ReadonlyModelDataStore<M extends Models> = {
+  getMany: <ModelName extends keyof M & string>(
+    modelName: ModelName,
+    filter?: ModelFilter<M, ModelName>,
+  ) => ModelData<M, ModelName>[];
+
+  getOne: <ModelName extends keyof M & string>(
+    modelName: ModelName,
+    filter?: ModelFilter<M, ModelName>,
+  ) => ModelData<M, ModelName> | undefined;
 };
 
 export type MutationArgs<MS extends ModelsSpec> =
@@ -52,20 +65,24 @@ export type MutationFn<MS extends ModelsSpec> = (
   options?: MutationOptions,
 ) => void;
 
-export type ModelsWithKeys<ModelName extends string> = Record<ModelName, Model>;
-
 export type Model = { id: string } & Record<string, unknown>;
+
 export type ModelData<
   M extends Models,
   ModelName extends keyof M,
 > = M[ModelName];
+
+export type ModelField<
+  M extends Models,
+  ModelName extends keyof M & string,
+> = keyof ModelData<M, ModelName> & string;
 
 // TODO: Non-trivial filtering?
 export type ModelFilter<
   M extends Models,
   ModelName extends keyof M & string,
 > = {
-  [K in keyof ModelData<M, ModelName>]?: ModelData<M, ModelName>[K];
+  [K in ModelField<M, ModelName>]?: ModelData<M, ModelName>[K];
 };
 
 export type LocalChanges<M extends Models> = ReadonlyArray<
@@ -144,9 +161,10 @@ export type BootstrapPayload<M extends Models> = {
 export function getMutationLocalChanges<MS extends ModelsSpec>(
   config: ModelsConfig<MS>,
   args: MutationArgs<MS>,
+  store: ReadonlyModelDataStore<MS['models']>,
 ): LocalChanges<MS['models']> {
   if (config.mutationDefs) {
-    return config.mutationDefs.getChanges(args);
+    return config.mutationDefs.getChanges(args, store);
   } else {
     // Based on config.mutationDefs types, this must be LocalChanges
     return args as LocalChanges<MS['models']>;

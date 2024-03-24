@@ -4,8 +4,8 @@ import '@testing-library/jest-dom';
 import { createLocoSyncReact } from '../../index';
 import { setup } from '../utils';
 
-test('Component updates after rendering with a new modelId passed to useQueryOne', async () => {
-  const { rerender } = render(
+test('Preloaded data is always hydrated', async () => {
+  render(
     <Provider notHydratedFallback={null} client={client}>
       <Test id="1" />
     </Provider>,
@@ -14,15 +14,6 @@ test('Component updates after rendering with a new modelId passed to useQueryOne
   // Use find instead of get because of loco-sync hydration
   const groupSpan1 = await screen.findByText(/Group/);
   expect(groupSpan1).toHaveTextContent('Group:1 has name "???"');
-
-  rerender(
-    <Provider notHydratedFallback={null} client={client}>
-      <Test id="2" />
-    </Provider>,
-  );
-
-  const groupSpan2 = await screen.findByText(/Group/);
-  expect(groupSpan2).toHaveTextContent('Group:2 has name "!!!"');
 });
 
 const bootstrap = {
@@ -30,10 +21,6 @@ const bootstrap = {
     {
       id: '1',
       name: '???',
-    },
-    {
-      id: '2',
-      name: '!!!',
     },
   ],
 };
@@ -44,8 +31,8 @@ const { Provider, useQueryOne } = createLocoSyncReact(config);
 const Test = ({ id }: { id: string }) => {
   const { data, isHydrated } = useQueryOne('Group', { id });
 
-  if (!data) {
-    return <span>Not found</span>;
+  if (!isHydrated || !data) {
+    throw new Error('Preloaded data should always be hydrated');
   }
 
   return (

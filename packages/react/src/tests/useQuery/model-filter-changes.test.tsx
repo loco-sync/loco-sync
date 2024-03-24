@@ -64,12 +64,9 @@ const { config, client } = setup(bootstrap);
 const { Provider, useQuery } = createLocoSyncReact(config);
 
 const Test = ({ authorId }: { authorId: string }) => {
-  const { data, isHydrated } = useQuery('Post', {
+  const { data } = useQuery('Post', {
     authorId,
   });
-  if (!isHydrated) {
-    return null;
-  }
 
   if (!data) {
     return <span>Not found</span>;

@@ -1,1 +1,1 @@
-export * from './lib/idb-client';
+export * from './lib/idb-adapter';

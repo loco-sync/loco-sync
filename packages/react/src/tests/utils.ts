@@ -53,12 +53,12 @@ export type MS = {
 };
 
 export const modelDefs: ModelDefs<M> = {
-  Group: { schemaVersion: 0 },
-  Post: { schemaVersion: 0 },
-  Author: { schemaVersion: 0 },
-  Tag: { schemaVersion: 0 },
-  PostTag: { schemaVersion: 0 },
-  PostTagAnnotation: { schemaVersion: 0 },
+  Group: { schemaVersion: 0, preload: true },
+  Post: { schemaVersion: 0, preload: true },
+  Author: { schemaVersion: 0, preload: true },
+  Tag: { schemaVersion: 0, preload: true },
+  PostTag: { schemaVersion: 0, preload: true },
+  PostTagAnnotation: { schemaVersion: 0, preload: true },
 };
 
 export const relationshipDefs = {
@@ -114,6 +114,7 @@ export const fakeStorageAdapter: StorageAdapter<MS> = {
   createPendingTransaction: async () => 0,
   saveBootstrap: async () => {},
   loadBootstrap: async () => ({}),
+  loadModelData: async () => [],
 };
 
 type SetupOptions = {
@@ -158,6 +159,14 @@ export const setup = (
     ...fakeStorageAdapter,
     async loadBootstrap() {
       return bootstrap;
+    },
+    async loadModelData(modelName, args) {
+      if (args) {
+        throw new Error(
+          "This fake test storage adapter doesn't handle extra loadModelData args.",
+        );
+      }
+      return bootstrap[modelName] ?? [];
     },
   };
 

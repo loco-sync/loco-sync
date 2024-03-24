@@ -5,8 +5,6 @@ import {
   type ModelsRelationshipDefs,
   one,
   many,
-  type Models,
-  type ModelsParsers,
   type LocalChanges,
 } from '../index';
 import { z } from 'zod';
@@ -120,27 +118,6 @@ describe('Config', () => {
         getChanges: () => [],
       },
     }).toMatchTypeOf<ModelsConfig<MS>>();
-  });
-});
-
-describe('Model parsers', () => {
-  type ZodFromParser<
-    M extends Models,
-    MP extends ModelsParsers<M>,
-    ModelName extends keyof M & string,
-    Action extends 'create' | 'delete',
-  > = Action extends 'create' ? MP[ModelName] : z.ZodUndefined;
-
-  test('One parser', () => {
-    expectTypeOf<(typeof parsers)['Post']>().toEqualTypeOf<
-      ZodFromParser<M, typeof parsers, 'Post', 'create'>
-    >();
-  });
-
-  test('Union of parsers', () => {
-    expectTypeOf<(typeof parsers)[keyof typeof parsers]>().toEqualTypeOf<
-      ZodFromParser<M, typeof parsers, keyof typeof parsers, 'create'>
-    >();
   });
 });
 

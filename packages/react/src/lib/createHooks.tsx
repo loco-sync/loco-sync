@@ -144,13 +144,7 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     if (!cache) {
       throw new Error('LocoSync context provider not found.');
     }
-    return useQueryManyFromStore(
-      cache,
-      relationshipDefs,
-      modelName,
-      modelFilter,
-      selection,
-    );
+    return useQueryManyFromStore(cache, modelName, modelFilter, selection);
   };
 
   const useQueryOne = <
@@ -165,13 +159,7 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     if (!cache) {
       throw new Error('LocoSync context provider not found.');
     }
-    return useQueryOneFromStore(
-      cache,
-      relationshipDefs,
-      modelName,
-      modelFilter,
-      selection,
-    );
+    return useQueryOneFromStore(cache, modelName, modelFilter, selection);
   };
 
   const useMutation: LocoSyncReact<MS>['useMutation'] = () => {
@@ -212,7 +200,6 @@ const useQueryOneFromStore = <
   >,
 >(
   cache: ModelDataCache<MS>,
-  relationshipDefs: MS['relationshipDefs'],
   modelName: ModelName,
   modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
   selection?: Selection,
@@ -221,8 +208,6 @@ const useQueryOneFromStore = <
 
   if (
     !observerRef.current ||
-    observerRef.current.cache !== cache ||
-    observerRef.current.relationshipDefs !== relationshipDefs ||
     observerRef.current.modelName !== modelName ||
     JSON.stringify(observerRef.current.modelFilter) !==
       JSON.stringify(modelFilter) ||
@@ -230,7 +215,6 @@ const useQueryOneFromStore = <
   ) {
     observerRef.current = new QueryObserver(
       cache,
-      relationshipDefs,
       modelName,
       modelFilter,
       selection,
@@ -254,7 +238,6 @@ const useQueryManyFromStore = <
   >,
 >(
   cache: ModelDataCache<MS>,
-  relationshipDefs: MS['relationshipDefs'],
   modelName: ModelName,
   modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
   selection?: Selection,
@@ -263,8 +246,6 @@ const useQueryManyFromStore = <
 
   if (
     !observerRef.current ||
-    observerRef.current.cache !== cache ||
-    observerRef.current.relationshipDefs !== relationshipDefs ||
     observerRef.current.modelName !== modelName ||
     JSON.stringify(observerRef.current.modelFilter) !==
       JSON.stringify(modelFilter) ||
@@ -272,7 +253,6 @@ const useQueryManyFromStore = <
   ) {
     observerRef.current = new QueryObserver(
       cache,
-      relationshipDefs,
       modelName,
       modelFilter,
       selection,

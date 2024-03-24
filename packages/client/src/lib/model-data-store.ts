@@ -43,6 +43,11 @@ export type ModelDataStore<M extends Models> = {
     listener: () => void,
   ) => () => void;
 
+  setMany: <ModelName extends keyof M & string>(
+    modelName: ModelName,
+    data: ModelData<M, ModelName>[],
+  ) => void;
+
   /**
    * @intenal
    */
@@ -128,7 +133,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     }
     for (const { optimisticData } of modelMap.values()) {
       if (optimisticData) {
-        if (!filter || modelPredicateFn(optimisticData, filter)) {
+        if (!filter || dataPassesFilter(optimisticData, filter)) {
           return optimisticData as ModelData<M, ModelName>;
         }
       }
@@ -147,7 +152,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     }
     for (const { optimisticData } of modelMap.values()) {
       if (optimisticData) {
-        if (!filter || modelPredicateFn(optimisticData, filter)) {
+        if (!filter || dataPassesFilter(optimisticData, filter)) {
           result.push(optimisticData as ModelData<M, ModelName>);
         }
       }
@@ -159,7 +164,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     modelName: ModelName,
     modelId: ModelId,
     data: ModelData<M, ModelName>,
-    maybeChangeSnapshots: ModelChangeSnapshot<M, ModelName>[],
+    maybeChangeSnapshots: ModelChangeSnapshot<M, ModelName>[] | undefined,
   ) => {
     let modelMap = modelsData.get(modelName);
     if (!modelMap) {
@@ -245,6 +250,15 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
       prev?.optimisticData,
       newOptimisticData,
     );
+  };
+
+  const setMany = <ModelName extends keyof M & string>(
+    modelName: ModelName,
+    data: ModelData<M, ModelName>[],
+  ) => {
+    for (const d of data) {
+      setData(modelName, d.id, d, undefined);
+    }
   };
 
   const loadBootstrap = (payload: BootstrapPayload<M>) => {
@@ -335,7 +349,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
           patch.modelName,
           patch.modelId,
           patch.data,
-          maybeModelChangeSnapshots?.changeSnapshots ?? [],
+          maybeModelChangeSnapshots?.changeSnapshots,
         );
       } else {
         // TODO: Would there ever be changeSnapshots for this case?
@@ -385,9 +399,9 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
       for (const { filter, listener } of modelNameListeners.values()) {
         if (!filter) {
           listenersToCall.push(listener);
-        } else if (prevData && modelPredicateFn(prevData, filter)) {
+        } else if (prevData && dataPassesFilter(prevData, filter)) {
           listenersToCall.push(listener);
-        } else if (nextData && modelPredicateFn(nextData, filter)) {
+        } else if (nextData && dataPassesFilter(nextData, filter)) {
           listenersToCall.push(listener);
         }
       }
@@ -453,6 +467,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     getChangeSnapshots,
     getOne,
     getMany,
+    setMany,
     processMessage,
     loadBootstrap,
     subscribe,
@@ -461,7 +476,10 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
   };
 };
 
-const modelPredicateFn = <M extends Models, ModelName extends keyof M & string>(
+export const dataPassesFilter = <
+  M extends Models,
+  ModelName extends keyof M & string,
+>(
   data: ModelData<M, ModelName>,
   filter: ModelFilter<M, ModelName>,
 ): boolean => {

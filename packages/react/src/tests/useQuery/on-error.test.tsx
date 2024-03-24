@@ -7,7 +7,7 @@ import { setup } from '../utils';
 import { vitest } from 'vitest';
 import { LocoSyncClient } from '@loco-sync/client';
 
-test('Calls onSuccess', async () => {
+test('Calls onError', async () => {
   const user = userEvent.setup();
 
   const onError = vitest.fn();
