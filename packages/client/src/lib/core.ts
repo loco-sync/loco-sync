@@ -38,7 +38,7 @@ type MutationDefs<MS extends ModelsSpec> = {
   ) => LocalChanges<MS['models']>;
 };
 
-type ReadonlyModelDataStore<M extends Models> = {
+export type ReadonlyModelDataStore<M extends Models> = {
   getMany: <ModelName extends keyof M & string>(
     modelName: ModelName,
     filter?: ModelFilter<M, ModelName>,
