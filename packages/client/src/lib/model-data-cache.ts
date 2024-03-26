@@ -69,7 +69,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
         for (const modelName of modelNames) {
           const modelDef = this.#config.modelDefs[modelName];
           if (modelDef.preload) {
-            this.loadModelData(modelName, undefined, () => {});
+            this.loadModelDataAsync(modelName, undefined, () => {});
           }
         }
       }
@@ -82,10 +82,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
 
   addObserver(observer: AnyQueryObserver<MS>) {
     this.#observers.add(observer);
-    const loadedFromStore = this.loadResultsForObserverFromStore(observer);
-    if (!loadedFromStore) {
-      this.loadResultsForObserver(observer);
-    }
+    this.loadResultsForObserver(observer);
   }
 
   removeObserver(observer: AnyQueryObserver<MS>) {
@@ -129,6 +126,13 @@ export class ModelDataCache<MS extends ModelsSpec> {
     // this.#store.processMessage(message);
   }
 
+  private loadResultsForObserver(observer: AnyQueryObserver<MS>) {
+    const loadedFromStore = this.loadResultsForObserverFromStore(observer);
+    if (!loadedFromStore) {
+      this.loadResultsForObserverAsync(observer);
+    }
+  }
+
   private loadResultsForObserverFromStore(
     observer: AnyQueryObserver<MS>,
   ): boolean {
@@ -142,8 +146,6 @@ export class ModelDataCache<MS extends ModelsSpec> {
 
     const storeListener = () => {
       unsubscribe();
-      // Use the regular method after initial load
-      // Extra Promise doesn't matter since QueryObserver already has results
       this.loadResultsForObserver(observer);
     };
 
@@ -196,7 +198,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
     return true;
   }
 
-  private async loadResultsForObserver(observer: AnyQueryObserver<MS>) {
+  private async loadResultsForObserverAsync(observer: AnyQueryObserver<MS>) {
     const storeListener = () => {
       // Unsubscribe current listeners
       baseUnsubscriber?.();
@@ -210,7 +212,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
       this.loadResultsForObserver(observer);
     };
 
-    const modelData = await this.loadModelData(
+    const modelData = await this.loadModelDataAsync(
       observer.modelName,
       observer.modelFilter,
       () => observer.setNotHydrated(),
@@ -223,7 +225,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
     );
     const visitResults = await Promise.all(
       modelData.map((data) =>
-        this.applyRelationships(
+        this.applyRelationshipsAsync(
           observer.modelName,
           data,
           observer.selection,
@@ -249,7 +251,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
    * @param setNotHydrated
    * @returns
    */
-  private async loadModelData<MS extends ModelsSpec>(
+  private async loadModelDataAsync<MS extends ModelsSpec>(
     modelName: keyof MS['models'] & string,
     modelFilter:
       | ModelFilter<MS['models'], keyof MS['models'] & string>
@@ -327,7 +329,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
     return !!matchingLoadedFilter;
   }
 
-  private async applyRelationships<
+  private async applyRelationshipsAsync<
     ModelName extends keyof MS['models'] & string,
     Selection extends ModelRelationshipSelection<
       MS['models'],
@@ -374,7 +376,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
 
       if (relationshipDef.type === 'one') {
         const filter = filterForModelRelationship(relationshipDef, modelData);
-        const referencedModels = await this.loadModelData(
+        const referencedModels = await this.loadModelDataAsync(
           relationshipDef.referencesModelName,
           filter,
           setNotHydrated,
@@ -392,7 +394,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
           | ModelResult<M, R, ReferencedModelName, SubSelection>
           | undefined;
         if (oneReferencedModel) {
-          const subVisitResult = await this.applyRelationships<
+          const subVisitResult = await this.applyRelationshipsAsync<
             ReferencedModelName,
             SubSelection
           >(
@@ -412,7 +414,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
           oneResult as any;
       } else {
         const filter = filterForModelRelationship(relationshipDef, modelData);
-        const referencedModels = await this.loadModelData(
+        const referencedModels = await this.loadModelDataAsync(
           relationshipDef.referencesModelName,
           filter,
           setNotHydrated,
@@ -427,7 +429,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
 
         const many: ModelResult<M, R, ReferencedModelName, SubSelection>[] = [];
         for (const model of referencedModels) {
-          const subVisitResult = await this.applyRelationships<
+          const subVisitResult = await this.applyRelationshipsAsync<
             ReferencedModelName,
             SubSelection
           >(
