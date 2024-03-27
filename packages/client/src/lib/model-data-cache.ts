@@ -173,16 +173,16 @@ export class ModelDataCache<MS extends ModelsSpec> {
     >[] = [];
     let dataNotInStore = false;
     for (const data of modelData) {
-      const { result, unsubscribers } = this.applyRelationshipsFromStore(
+      const applyRelationshipsResult = this.applyRelationshipsFromStore(
         observer.modelName,
         data,
         observer.selection,
         storeListener,
       );
-      unsubscribers.push(...unsubscribers);
+      unsubscribers.push(...applyRelationshipsResult.unsubscribers);
 
-      if (result) {
-        modelResults.push(result);
+      if (applyRelationshipsResult.result) {
+        modelResults.push(applyRelationshipsResult.result);
       } else {
         dataNotInStore = true;
         break;
