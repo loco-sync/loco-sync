@@ -7,6 +7,7 @@ import {
   type ModelsConfig,
 } from './core';
 import { ModelDataCache } from './model-data-cache';
+import type { CreateModelDataStoreOptions } from './model-data-store';
 import type { NetworkAdapter } from './network';
 import type { StorageAdapter } from './storage';
 
@@ -14,6 +15,7 @@ export type LocoSyncOptions<MS extends ModelsSpec> = {
   network: NetworkAdapter<MS>;
   storage: StorageAdapter<MS>;
   config: ModelsConfig<MS>;
+  storeOptions?: CreateModelDataStoreOptions;
 };
 
 export type LocalSyncClientListener<MS extends ModelsSpec> = (args: {
@@ -66,7 +68,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#pushInFlight = false;
     this.#catchUpSyncCompleted = false;
 
-    this.#cache = new ModelDataCache(this, this.#config);
+    this.#cache = new ModelDataCache(this, this.#config, opts.storeOptions);
   }
 
   getCache() {

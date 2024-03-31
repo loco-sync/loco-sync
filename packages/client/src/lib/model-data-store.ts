@@ -78,7 +78,11 @@ export type ModelDataStore<M extends Models> = {
 type Listener = () => void;
 type Listeners = Set<Listener>;
 
-export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
+export type CreateModelDataStoreOptions = {
+  verbose?: boolean;
+};
+
+export const createModelDataStore = <M extends Models>(opts?: CreateModelDataStoreOptions): ModelDataStore<M> => {
   const modelsData: Map<
     keyof M & string,
     Map<
@@ -280,6 +284,9 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
   };
 
   const processMessage = (message: ToProcessMessage<M>) => {
+    if (opts?.verbose) {
+      console.log('processMessage', message);
+    }
     const update = getStateUpdate(
       {
         lastSyncId,

@@ -16,6 +16,7 @@ import {
 import {
   createModelDataStore,
   dataPassesFilter,
+  type CreateModelDataStoreOptions,
   type ModelDataStore,
 } from './model-data-store';
 import type { QueryObserver } from './query-observers';
@@ -52,8 +53,12 @@ export class ModelDataCache<MS extends ModelsSpec> {
     }[]
   >;
 
-  constructor(client: LocoSyncClient<MS>, config: ModelsConfig<MS>) {
-    this.#store = createModelDataStore();
+  constructor(
+    client: LocoSyncClient<MS>,
+    config: ModelsConfig<MS>,
+    storeOpts?: CreateModelDataStoreOptions,
+  ) {
+    this.#store = createModelDataStore(storeOpts);
     this.#storage = client.getStorage();
     this.#config = config;
     this.#observers = new Set();
