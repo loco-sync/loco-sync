@@ -162,9 +162,9 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
   const setData = <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId,
-    data: ModelData<M, ModelName>,
+    data: ModelData<M, ModelName> | undefined,
     maybeChangeSnapshots: ModelChangeSnapshot<M, ModelName>[] | undefined,
-    listeners: Listeners
+    listeners: Listeners,
   ) => {
     let modelMap = modelsData.get(modelName);
     if (!modelMap) {
@@ -173,61 +173,36 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     }
     const prev = modelsData.get(modelName)?.get(modelId);
     const newChangeSnapshots = maybeChangeSnapshots ?? prev?.changeSnapshots;
-    const newOptimisticData = applyChangeSnapshotsToData(
+    const newOptimisticDataResult = applyChangeSnapshotsToData(
       data,
       newChangeSnapshots,
     );
-    if (typeof newOptimisticData === 'string') {
-      console.error(newOptimisticData);
+    if (!newOptimisticDataResult.ok) {
+      console.error(
+        'setData get optimistic data failed',
+        newOptimisticDataResult.error,
+      );
       return;
     }
     modelMap.set(modelId, {
       confirmedData: data,
       changeSnapshots: newChangeSnapshots,
-      optimisticData: newOptimisticData,
+      optimisticData: newOptimisticDataResult.value,
     });
     addListenersForModel(
       listeners,
       modelName,
       modelId,
       prev?.optimisticData,
-      newOptimisticData,
+      newOptimisticDataResult.value,
     );
-  };
-
-  const deleteData = <ModelName extends keyof M & string>(
-    modelName: ModelName,
-    modelId: ModelId,
-    listeners: Listeners
-  ) => {
-    const modelMap = modelsData.get(modelName);
-    if (modelMap) {
-      const prev = modelsData.get(modelName)?.get(modelId);
-      const newOptimisticData = applyChangeSnapshotsToData(
-        prev?.confirmedData,
-        prev?.changeSnapshots,
-      );
-      if (typeof newOptimisticData === 'string') {
-        console.error(newOptimisticData);
-        return;
-      }
-
-      modelMap.delete(modelId);
-      addListenersForModel(
-        listeners,
-        modelName,
-        modelId,
-        prev?.optimisticData,
-        undefined,
-      );
-    }
   };
 
   const setChangeSnapshots = <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId,
     changeSnapshots: readonly ModelChangeSnapshot<M, ModelName>[],
-    listeners: Listeners
+    listeners: Listeners,
   ) => {
     let modelMap = modelsData.get(modelName);
     if (!modelMap) {
@@ -235,25 +210,28 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
       modelsData.set(modelName, modelMap);
     }
     const prev = modelsData.get(modelName)?.get(modelId);
-    const newOptimisticData = applyChangeSnapshotsToData(
+    const newOptimisticDataResult = applyChangeSnapshotsToData(
       prev?.confirmedData,
       changeSnapshots,
     );
-    if (typeof newOptimisticData === 'string') {
-      console.error(newOptimisticData);
+    if (!newOptimisticDataResult.ok) {
+      console.error(
+        'setChangeSnapshots get optimistic data failed',
+        newOptimisticDataResult.error,
+      );
       return;
     }
     modelMap.set(modelId, {
       confirmedData: prev?.confirmedData,
       changeSnapshots,
-      optimisticData: newOptimisticData,
+      optimisticData: newOptimisticDataResult.value,
     });
     addListenersForModel(
       listeners,
       modelName,
       modelId,
       prev?.optimisticData,
-      newOptimisticData,
+      newOptimisticDataResult.value,
     );
   };
 
@@ -351,21 +329,16 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
     const listeners: Listeners = new Set();
 
     for (const patch of modelDataPatches) {
-      if (patch.data) {
-        const maybeModelChangeSnapshots = modelChangeSnapshots.find(
-          (c) => c.modelId === patch.modelId && c.modelName === patch.modelName,
-        );
-        setData(
-          patch.modelName,
-          patch.modelId,
-          patch.data,
-          maybeModelChangeSnapshots?.changeSnapshots,
-          listeners
-        );
-      } else {
-        // TODO: Would there ever be changeSnapshots for this case?
-        deleteData(patch.modelName, patch.modelId, listeners);
-      }
+      const maybeModelChangeSnapshots = modelChangeSnapshots.find(
+        (c) => c.modelId === patch.modelId && c.modelName === patch.modelName,
+      );
+      setData(
+        patch.modelName,
+        patch.modelId,
+        patch.data,
+        maybeModelChangeSnapshots?.changeSnapshots,
+        listeners,
+      );
       processedModels.add(getModelNameId(patch.modelName, patch.modelId));
     }
 
@@ -377,7 +350,7 @@ export const createModelDataStore = <M extends Models>(): ModelDataStore<M> => {
           patch.modelName,
           patch.modelId,
           patch.changeSnapshots,
-          listeners
+          listeners,
         );
       }
     }

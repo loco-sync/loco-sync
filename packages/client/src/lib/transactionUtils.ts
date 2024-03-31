@@ -115,7 +115,6 @@ export type StateUpdate<M extends Models> = {
     | { transactionId: number; lastSyncId: number }
     | undefined;
   removePendingTransactionIds: readonly number[];
-  errors?: string[];
 };
 
 export const getStateUpdate = <M extends Models>(
@@ -175,7 +174,7 @@ function getUpdatedStateForSync<M extends Models>(
     pendingTransactions,
   }: InMemoryTransactionalState<M>,
   { lastSyncId: messageLastSyncId, sync }: SyncMessage<M>,
-): Result<StateUpdate<M>, string[]> {
+): Result<StateUpdate<M>, TransactionErrors[]> {
   if (messageLastSyncId <= stateLastSyncId) {
     return {
       ok: true,
@@ -190,7 +189,7 @@ function getUpdatedStateForSync<M extends Models>(
     };
   }
 
-  const errorMessages: string[] = [];
+  const errors: TransactionErrors[] = [];
 
   // Step 1: Get updated data
   // Go through all syncActions to determine what the latest data is
@@ -212,9 +211,11 @@ function getUpdatedStateForSync<M extends Models>(
 
     if (syncAction.action === 'insert') {
       if (currentModelData) {
-        errorMessages.push(
-          `Insert (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} already exists`,
-        );
+        errors.push({
+          message: `Insert (sync action) failed: entity already exists`,
+          currentModelData,
+          syncAction,
+        });
       } else if (existingDataPatch) {
         existingDataPatch.data = syncAction.data;
       } else {
@@ -226,9 +227,11 @@ function getUpdatedStateForSync<M extends Models>(
       }
     } else if (syncAction.action === 'update') {
       if (!currentModelData) {
-        errorMessages.push(
-          `Update (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
-        );
+        errors.push({
+          message: `Update (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
+          currentModelData,
+          syncAction,
+        });
       } else if (existingDataPatch) {
         existingDataPatch.data = syncAction.data;
       } else {
@@ -240,9 +243,11 @@ function getUpdatedStateForSync<M extends Models>(
       }
     } else if (syncAction.action === 'delete') {
       if (!currentModelData) {
-        errorMessages.push(
-          `Delete (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
-        );
+        errors.push({
+          message: `Delete (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
+          currentModelData,
+          syncAction,
+        });
       } else if (existingDataPatch) {
         existingDataPatch.data = undefined;
       } else {
@@ -282,12 +287,12 @@ function getUpdatedStateForSync<M extends Models>(
     );
   }
 
-  // if (errorMessages.length > 0) {
-  //   return {
-  //     ok: false,
-  //     error: errorMessages,
-  //   };
-  // }
+  if (errors.length > 0) {
+    return {
+      ok: false,
+      error: errors,
+    };
+  }
 
   return {
     ok: true,
@@ -300,7 +305,6 @@ function getUpdatedStateForSync<M extends Models>(
       removePendingTransactionIds: removedTransactions.map(
         (t) => t.transactionId,
       ),
-      errors: errorMessages,
     },
   };
 }
@@ -308,8 +312,8 @@ function getUpdatedStateForSync<M extends Models>(
 function getOptimisticUpdateForTransactionStart<M extends Models>(
   { getChangeSnapshots, getData }: InMemoryTransactionalState<M>,
   { transactionId, changes }: StartTransactionMessage<M>,
-): Result<StateUpdate<M>, string[]> {
-  const errorMessages: string[] = [];
+): Result<StateUpdate<M>, TransactionErrors[]> {
+  const errors: TransactionErrors[] = [];
   const modelChangeSnapshots: ModelChangeSnapshots<M, keyof M & string>[] = [];
 
   for (const change of changes) {
@@ -325,21 +329,26 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
       initialModelChangeSnapshots ??
       [];
 
-    const currentModelData = applyChangeSnapshotsToData(
+    const currentModelDataResult = applyChangeSnapshotsToData(
       confirmedModelData,
       currentModelChangeSnapshots,
     );
-    if (typeof currentModelData === 'string') {
-      errorMessages.push(currentModelData);
+    if (!currentModelDataResult.ok) {
+      errors.push(currentModelDataResult.error);
       continue;
     }
+    const currentModelData = currentModelDataResult.value;
 
-    let errorMessage: string | undefined;
+    let error: TransactionErrors | undefined;
     let newSnapshot: ModelChangeSnapshot<M, keyof M & string> | undefined;
 
     if (change.action === 'create') {
       if (currentModelData) {
-        errorMessage = `Insert (local change) failed: ${change.modelName} ${change.modelId} data already exists`;
+        error = {
+          message: `Insert (local change) failed: ${change.modelName} ${change.modelId} data already exists`,
+          currentModelData,
+          change,
+        };
       } else {
         newSnapshot = {
           transactionId,
@@ -349,7 +358,11 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
       }
     } else if (change.action === 'update') {
       if (!currentModelData) {
-        errorMessage = `Update (local change) failed: ${change.modelName} ${change.modelId} does not exist`;
+        error = {
+          message: `Update (local change) failed: ${change.modelName} ${change.modelId} does not exist`,
+          currentModelData,
+          change,
+        };
       } else {
         const changes: ModelPendingChange<M, keyof M & string> = {};
         for (const key in change.data) {
@@ -373,7 +386,11 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
       }
     } else if (change.action === 'delete') {
       if (!currentModelData) {
-        errorMessage = `Delete (local change) failed: ${change.modelName} ${change.modelId} does not exist`;
+        error = {
+          message: `Delete (local change) failed: ${change.modelName} ${change.modelId} does not exist`,
+          currentModelData,
+          change,
+        };
       } else {
         newSnapshot = {
           transactionId,
@@ -383,8 +400,8 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
       }
     }
 
-    if (errorMessage) {
-      errorMessages.push(errorMessage);
+    if (error) {
+      errors.push(error);
     } else if (newSnapshot) {
       if (pendingModelChangeSnapshots) {
         pendingModelChangeSnapshots.changeSnapshots.push(newSnapshot);
@@ -398,10 +415,10 @@ function getOptimisticUpdateForTransactionStart<M extends Models>(
     }
   }
 
-  if (errorMessages.length > 0) {
+  if (errors.length > 0) {
     return {
       ok: false,
-      error: errorMessages,
+      error: errors,
     };
   }
 
@@ -555,20 +572,44 @@ export const applyChangeSnapshotsToData = <
 >(
   data: ModelData<M, ModelName> | undefined,
   changeSnapshots: readonly ModelChangeSnapshot<M, ModelName>[] | undefined,
-): ModelData<M, ModelName> | undefined | string => {
+): Result<ModelData<M, ModelName> | undefined, TransactionErrors> => {
   if (!changeSnapshots) {
-    return data;
+    return {
+      ok: true,
+      value: data,
+    };
   }
 
+  let currentData = data;
   for (const snapshot of changeSnapshots) {
     if (snapshot.type === 'insert') {
-      if (data) {
-        return 'Invariant violation: insert changeSnapshot on existing data';
+      if (currentData) {
+        return {
+          ok: false,
+          error: {
+            message:
+              'Invariant violation: insert changeSnapshot on existing data',
+            data,
+            changeSnapshots,
+            currentData,
+            snapshot,
+          },
+        };
       }
-      data = snapshot.data;
+      currentData = snapshot.data;
     } else if (snapshot.type === 'update') {
-      if (!data) {
-        return 'Invariant violation: update changeSnapshot on missing data';
+      if (!currentData) {
+        return {
+          ok: false,
+          error: {
+            message:
+              'Invariant violation: update changeSnapshot on missing data',
+            data,
+            changeSnapshots,
+            currentData,
+            snapshot,
+          },
+        };
       }
       const patch: Partial<ModelData<M, ModelName>> = {};
       for (const key in snapshot.changes) {
@@ -577,16 +618,31 @@ export const applyChangeSnapshotsToData = <
           patch[key] = change.updated;
         }
       }
-      data = {
-        ...data,
+      currentData = {
+        ...currentData,
         ...patch,
       };
     } else if (snapshot.type === 'delete') {
-      if (!data) {
-        return 'Invariant violation: delete changeSnapshot on missing data';
+      if (!currentData) {
+        return {
+          ok: false,
+          error: {
+            message:
+              'Invariant violation: delete changeSnapshot on missing data',
+            data,
+            changeSnapshots,
+            currentData,
+            snapshot,
+          },
+        };
       }
-      data = undefined;
+      currentData = undefined;
     }
   }
-  return data;
+  return {
+    ok: true,
+    value: currentData,
+  };
 };
+
+type TransactionErrors = Record<string, unknown>;

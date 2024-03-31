@@ -1,10 +1,9 @@
-import { createModelDataStore, type ModelDataStore } from '@loco-sync/client';
-import type { MS } from '../utils';
+import { createModelDataStore } from '../../lib/model-data-store';
+import type { M } from './utils';
 
 describe('ModelDataStore.processMessage()', () => {
-  let store: ModelDataStore<MS['models']>;
-  beforeEach(() => {
-    store = createModelDataStore<MS['models']>();
+  it('Can edit a field after it is changed in the second sync of payload', () => {
+    const store = createModelDataStore<M>();
     store.loadBootstrap({
       Post: [
         {
@@ -15,9 +14,7 @@ describe('ModelDataStore.processMessage()', () => {
         },
       ],
     });
-  });
 
-  it('Can edit a field after it is changed in the second sync of payload', () => {
     // Edit title
     store.processMessage({
       type: 'startTransaction',
@@ -246,6 +243,145 @@ describe('ModelDataStore.processMessage()', () => {
       title: 'newer title',
       body: 'newer body',
       authorId: '1',
+    });
+  });
+
+  it('Insert, update, and delete on entity', () => {
+    const store = createModelDataStore<M>();
+
+    // Create Post
+    store.processMessage({
+      type: 'startTransaction',
+      transactionId: 1,
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'create',
+          data: {
+            id: 'P1',
+            title: 'init title',
+            body: 'init body',
+            authorId: 'A1',
+          },
+        },
+      ],
+    });
+    expect(store.getOne('Post', { id: 'P1' })).toEqual({
+      id: 'P1',
+      title: 'init title',
+      body: 'init body',
+      authorId: 'A1',
+    });
+
+    store.processMessage({
+      type: 'startTransaction',
+      transactionId: 2,
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'update',
+          data: {
+            title: 'new title',
+          },
+        },
+      ],
+    });
+    expect(store.getOne('Post', { id: 'P1' })).toEqual({
+      id: 'P1',
+      title: 'new title',
+      body: 'init body',
+      authorId: 'A1',
+    });
+
+    store.processMessage({
+      type: 'startTransaction',
+      transactionId: 3,
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'delete',
+        },
+      ],
+    });
+    expect(store.getOne('Post', { id: 'P1' })).toBeUndefined();
+  });
+
+  it('Delete then insert on entity', () => {
+    const store = createModelDataStore<M>();
+    store.loadBootstrap({
+      Post: [
+        {
+          id: 'P1',
+          title: 'init title',
+          body: 'init body',
+          authorId: 'A1',
+        },
+      ],
+    });
+
+    store.processMessage({
+      type: 'startTransaction',
+      transactionId: 1,
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'delete',
+        },
+      ],
+    });
+    expect(store.getOne('Post', { id: 'P1' })).toBeUndefined();
+
+    store.processMessage({
+      type: 'commitTransaction',
+      transactionId: 1,
+      lastSyncId: 1,
+    });
+
+    store.processMessage({
+      type: 'startTransaction',
+      transactionId: 2,
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'create',
+          data: {
+            id: 'P1',
+            title: 'added back title',
+            body: 'added back body',
+            authorId: 'A1',
+          },
+        },
+      ],
+    });
+    expect(store.getOne('Post', { id: 'P1' })).toEqual({
+      id: 'P1',
+      title: 'added back title',
+      body: 'added back body',
+      authorId: 'A1',
+    });
+
+    store.processMessage({
+      type: 'sync',
+      lastSyncId: 1,
+      sync: [
+        {
+          syncId: 1,
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'delete',
+        },
+      ],
+    });
+    expect(store.getOne('Post', { id: 'P1' })).toEqual({
+      id: 'P1',
+      title: 'added back title',
+      body: 'added back body',
+      authorId: 'A1',
     });
   });
 });
