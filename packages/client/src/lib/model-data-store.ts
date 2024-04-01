@@ -1,6 +1,6 @@
 import type { BootstrapPayload, ModelData, ModelFilter, Models } from './core';
 import {
-  applyChangeSnapshotsToData,
+  getOptimisticData,
   getStateUpdate,
   type ModelChangeSnapshot,
   type ModelId,
@@ -177,28 +177,21 @@ export const createModelDataStore = <M extends Models>(opts?: CreateModelDataSto
     }
     const prev = modelsData.get(modelName)?.get(modelId);
     const newChangeSnapshots = maybeChangeSnapshots ?? prev?.changeSnapshots;
-    const newOptimisticDataResult = applyChangeSnapshotsToData(
+    const newOptimisticData = getOptimisticData(
       data,
       newChangeSnapshots,
     );
-    if (!newOptimisticDataResult.ok) {
-      console.error(
-        'setData get optimistic data failed',
-        newOptimisticDataResult.error,
-      );
-      return;
-    }
     modelMap.set(modelId, {
       confirmedData: data,
       changeSnapshots: newChangeSnapshots,
-      optimisticData: newOptimisticDataResult.value,
+      optimisticData: newOptimisticData,
     });
     addListenersForModel(
       listeners,
       modelName,
       modelId,
       prev?.optimisticData,
-      newOptimisticDataResult.value,
+      newOptimisticData,
     );
   };
 
@@ -214,28 +207,21 @@ export const createModelDataStore = <M extends Models>(opts?: CreateModelDataSto
       modelsData.set(modelName, modelMap);
     }
     const prev = modelsData.get(modelName)?.get(modelId);
-    const newOptimisticDataResult = applyChangeSnapshotsToData(
+    const newOptimisticData = getOptimisticData(
       prev?.confirmedData,
       changeSnapshots,
     );
-    if (!newOptimisticDataResult.ok) {
-      console.error(
-        'setChangeSnapshots get optimistic data failed',
-        newOptimisticDataResult.error,
-      );
-      return;
-    }
     modelMap.set(modelId, {
       confirmedData: prev?.confirmedData,
       changeSnapshots,
-      optimisticData: newOptimisticDataResult.value,
+      optimisticData: newOptimisticData,
     });
     addListenersForModel(
       listeners,
       modelName,
       modelId,
       prev?.optimisticData,
-      newOptimisticDataResult.value,
+      newOptimisticData,
     );
   };
 
@@ -291,7 +277,6 @@ export const createModelDataStore = <M extends Models>(opts?: CreateModelDataSto
       {
         lastSyncId,
         pendingTransactions,
-        getData: getConfirmedData,
         getChangeSnapshots: getChangeSnapshots,
       },
       message,

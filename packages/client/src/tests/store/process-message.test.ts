@@ -384,4 +384,140 @@ describe('ModelDataStore.processMessage()', () => {
       authorId: 'A1',
     });
   });
+
+  it('Sync before commitTransaction with subsequent transaction', () => {
+    const store = createModelDataStore<M>();
+    store.loadBootstrap({
+      Post: [
+        {
+          id: 'P1',
+          title: 'init title',
+          body: 'init body',
+          authorId: 'A1',
+        },
+      ],
+    });
+
+    store.processMessage({
+      type: 'startTransaction',
+      transactionId: 1,
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'delete',
+        },
+      ],
+    });
+    expect(store.getOne('Post', { id: 'P1' })).toBeUndefined();
+
+    store.processMessage({
+      type: 'startTransaction',
+      transactionId: 2,
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'create',
+          data: {
+            id: 'P1',
+            title: 'added back title',
+            body: 'added back body',
+            authorId: 'A1',
+          },
+        },
+      ],
+    });
+    expect(store.getOne('Post', { id: 'P1' })).toEqual({
+      id: 'P1',
+      title: 'added back title',
+      body: 'added back body',
+      authorId: 'A1',
+    });
+
+    store.processMessage({
+      type: 'commitTransaction',
+      transactionId: 1,
+      lastSyncId: 1,
+    });
+
+    // Sync for first transaction, which has been committed
+    store.processMessage({
+      type: 'sync',
+      lastSyncId: 1,
+      sync: [
+        {
+          syncId: 1,
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'delete',
+        },
+      ],
+    });
+
+    // Sync for second transaction, which hasn't had a commitTransaction yet
+    store.processMessage({
+      type: 'sync',
+      lastSyncId: 2,
+      sync: [
+        {
+          syncId: 2,
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'insert',
+          data: {
+            id: 'P1',
+            title: 'added back title',
+            body: 'added back body',
+            authorId: 'A1',
+          }
+        },
+      ],
+    });
+
+    store.processMessage({
+      type: 'commitTransaction',
+      transactionId: 2,
+      lastSyncId: 2,
+    });
+
+    store.processMessage({
+      type: 'startTransaction',
+      transactionId: 3,
+      changes: [
+        {
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'delete',
+        },
+      ],
+    });
+    store.processMessage({
+      type: 'commitTransaction',
+      transactionId: 3,
+      lastSyncId: 3,
+    });
+
+    store.processMessage({
+      type: 'sync',
+      lastSyncId: 3,
+      sync: [
+        {
+          syncId: 3,
+          modelName: 'Post',
+          modelId: 'P1',
+          action: 'delete',
+        },
+      ],
+    });
+
+    // Unrelated sync to flush existing committed transactions
+    store.processMessage({
+      type: 'sync',
+      lastSyncId: 4,
+      sync: [],
+    });
+
+    expect(store.getOne('Post', { id: 'P1' })).toBeUndefined();
+  });
 });

@@ -97,16 +97,6 @@ export const relationshipDefs = {
   },
 } satisfies ModelsRelationshipDefs<M>;
 
-export const fakeNetworkAdapter: NetworkAdapter<MS> = {
-  sendTransaction: async () => ({ ok: true, value: { lastSyncId: 0 } }),
-  deltaSync: async () => ({ ok: true, value: { sync: [] } }),
-  loadBootstrap: async () => ({
-    ok: true,
-    value: { lastSyncId: 0, bootstrap: {} },
-  }),
-  initSync: () => () => {},
-};
-
 export const fakeStorageAdapter: StorageAdapter<MS> = {
   getMetadataAndPendingTransactions: async () => undefined,
   applySyncActions: async () => {},
@@ -131,9 +121,14 @@ export const setup = (
   });
 
   let listener: NetworkMessageListener<MS['models']> | undefined;
+  let lastSyncId = 0;
 
   const networkAdapter: NetworkAdapter<MS> = {
-    ...fakeNetworkAdapter,
+    sendTransaction: async (args) => {
+      lastSyncId += args.length;
+      return { ok: true, value: { lastSyncId } };
+    },
+    deltaSync: async () => ({ ok: true, value: { sync: [] } }),
     loadBootstrap: async () => {
       return {
         ok: true,

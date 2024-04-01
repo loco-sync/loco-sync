@@ -6,7 +6,7 @@ import { createLocoSyncReact } from '../../index';
 import { setup } from '../utils';
 import { vitest } from 'vitest';
 
-test('Calls onSuccess', async () => {
+test('Calls onSuccess asdfasdf', async () => {
   const user = userEvent.setup();
 
   const onSuccess = vitest.fn();

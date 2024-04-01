@@ -1,5 +1,4 @@
 import type {
-  LocalChange,
   LocalChanges,
   ModelData,
   Models,
@@ -52,10 +51,6 @@ type ModelPendingChange<
 
 export type InMemoryTransactionalState<M extends Models> = {
   lastSyncId: number;
-  getData: <ModelName extends keyof M & string>(
-    modelName: ModelName,
-    modelId: ModelId,
-  ) => ModelData<M, ModelName> | undefined;
   getChangeSnapshots: <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId,
@@ -122,33 +117,17 @@ export const getStateUpdate = <M extends Models>(
   message: ToProcessMessage<M>,
 ): StateUpdate<M> | null => {
   if (message.type === 'sync') {
-    const result = getUpdatedStateForSync(state, message);
-    if (!result.ok) {
-      console.error(`Could not process sync message`, {
-        message,
-        errors: result.error,
-      });
-      return null;
-    }
-    return result.value;
+    return getUpdatedStateForSync(state, message);
   }
 
   if (message.type === 'startTransaction') {
-    const result = getOptimisticUpdateForTransactionStart(state, message);
-    if (!result.ok) {
-      console.error(`Could not process start transactions message`, {
-        message,
-        errors: result.error,
-      });
-      return null;
-    }
-    return result.value;
+    return getOptimisticUpdateForTransactionStart(state, message);
   } else if (message.type === 'commitTransaction') {
     const result = getOptimisticUpdateForTransactionCommit(state, message);
     if (!result.ok) {
       console.error(`Could not process commit transactions message`, {
         message,
-        errors: result.error,
+        error: result.error,
       });
       return null;
     }
@@ -158,7 +137,7 @@ export const getStateUpdate = <M extends Models>(
     if (!result.ok) {
       console.error(`Could not process rollback transactions message`, {
         message,
-        errors: result.error,
+        error: result.error,
       });
       return null;
     }
@@ -169,27 +148,21 @@ export const getStateUpdate = <M extends Models>(
 function getUpdatedStateForSync<M extends Models>(
   {
     lastSyncId: stateLastSyncId,
-    getData,
     getChangeSnapshots,
     pendingTransactions,
   }: InMemoryTransactionalState<M>,
-  { lastSyncId: messageLastSyncId, sync }: SyncMessage<M>,
-): Result<StateUpdate<M>, TransactionErrors[]> {
-  if (messageLastSyncId <= stateLastSyncId) {
+  { lastSyncId: newLastSyncId, sync }: SyncMessage<M>,
+): StateUpdate<M> {
+  if (newLastSyncId <= stateLastSyncId) {
     return {
-      ok: true,
-      value: {
-        lastSyncId: undefined,
-        modelChangeSnapshots: [],
-        modelDataPatches: [],
-        addPendingTransaction: undefined,
-        commitPendingTransaction: undefined,
-        removePendingTransactionIds: [],
-      },
+      lastSyncId: undefined,
+      modelChangeSnapshots: [],
+      modelDataPatches: [],
+      addPendingTransaction: undefined,
+      commitPendingTransaction: undefined,
+      removePendingTransactionIds: [],
     };
   }
-
-  const errors: TransactionErrors[] = [];
 
   // Step 1: Get updated data
   // Go through all syncActions to determine what the latest data is
@@ -205,18 +178,9 @@ function getUpdatedStateForSync<M extends Models>(
         p.modelId === syncAction.modelId &&
         p.modelName === syncAction.modelName,
     );
-    const currentModelData = existingDataPatch
-      ? existingDataPatch.data
-      : getData(syncAction.modelName, syncAction.modelId);
 
     if (syncAction.action === 'insert') {
-      if (currentModelData) {
-        errors.push({
-          message: `Insert (sync action) failed: entity already exists`,
-          currentModelData,
-          syncAction,
-        });
-      } else if (existingDataPatch) {
+      if (existingDataPatch) {
         existingDataPatch.data = syncAction.data;
       } else {
         modelDataPatches.push({
@@ -226,13 +190,7 @@ function getUpdatedStateForSync<M extends Models>(
         });
       }
     } else if (syncAction.action === 'update') {
-      if (!currentModelData) {
-        errors.push({
-          message: `Update (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
-          currentModelData,
-          syncAction,
-        });
-      } else if (existingDataPatch) {
+      if (existingDataPatch) {
         existingDataPatch.data = syncAction.data;
       } else {
         modelDataPatches.push({
@@ -242,13 +200,7 @@ function getUpdatedStateForSync<M extends Models>(
         });
       }
     } else if (syncAction.action === 'delete') {
-      if (!currentModelData) {
-        errors.push({
-          message: `Delete (sync action) failed: ${syncAction.modelName} ${syncAction.modelId} does not exist`,
-          currentModelData,
-          syncAction,
-        });
-      } else if (existingDataPatch) {
+      if (existingDataPatch) {
         existingDataPatch.data = undefined;
       } else {
         modelDataPatches.push({
@@ -261,16 +213,13 @@ function getUpdatedStateForSync<M extends Models>(
   }
 
   // Step 2: Find transactions that occurred before or at lastSyncId
-  const removedTransactions: PendingTransaction<M>[] = [];
-  const nextPendingTransactions: PendingTransaction<M>[] = [];
+  const removeTransactions: PendingTransaction<M>[] = [];
   for (const transaction of pendingTransactions) {
     if (
-      transaction.lastSyncId === null ||
-      transaction.lastSyncId > messageLastSyncId
+      transaction.lastSyncId !== null &&
+      transaction.lastSyncId <= newLastSyncId
     ) {
-      nextPendingTransactions.push(transaction);
-    } else {
-      removedTransactions.push(transaction);
+      removeTransactions.push(transaction);
     }
   }
 
@@ -279,7 +228,7 @@ function getUpdatedStateForSync<M extends Models>(
     M,
     keyof M & string
   >[] = [];
-  for (const transaction of removedTransactions) {
+  for (const transaction of removeTransactions) {
     modelChangeSnapshots = removeChangeSnapshotsOfTransaction(
       transaction,
       getChangeSnapshots,
@@ -287,158 +236,89 @@ function getUpdatedStateForSync<M extends Models>(
     );
   }
 
-  if (errors.length > 0) {
-    return {
-      ok: false,
-      error: errors,
-    };
-  }
-
   return {
-    ok: true,
-    value: {
-      lastSyncId: messageLastSyncId,
-      modelDataPatches,
-      modelChangeSnapshots,
-      addPendingTransaction: undefined,
-      commitPendingTransaction: undefined,
-      removePendingTransactionIds: removedTransactions.map(
-        (t) => t.transactionId,
-      ),
-    },
+    lastSyncId: newLastSyncId,
+    modelDataPatches,
+    modelChangeSnapshots,
+    addPendingTransaction: undefined,
+    commitPendingTransaction: undefined,
+    removePendingTransactionIds: removeTransactions.map(
+      (t) => t.transactionId,
+    ),
   };
 }
 
 function getOptimisticUpdateForTransactionStart<M extends Models>(
-  { getChangeSnapshots, getData }: InMemoryTransactionalState<M>,
+  { getChangeSnapshots }: InMemoryTransactionalState<M>,
   { transactionId, changes }: StartTransactionMessage<M>,
-): Result<StateUpdate<M>, TransactionErrors[]> {
-  const errors: TransactionErrors[] = [];
+): StateUpdate<M> {
   const modelChangeSnapshots: ModelChangeSnapshots<M, keyof M & string>[] = [];
 
   for (const change of changes) {
-    const confirmedModelData = getData(change.modelName, change.modelId);
-
     const pendingModelChangeSnapshots = modelChangeSnapshots.find(
       (c) => c.modelId === change.modelId && c.modelName === change.modelName,
     );
     const initialModelChangeSnapshots =
       getChangeSnapshots(change.modelName, change.modelId) ?? [];
-    const currentModelChangeSnapshots =
-      pendingModelChangeSnapshots?.changeSnapshots ??
-      initialModelChangeSnapshots ??
-      [];
 
-    const currentModelDataResult = applyChangeSnapshotsToData(
-      confirmedModelData,
-      currentModelChangeSnapshots,
-    );
-    if (!currentModelDataResult.ok) {
-      errors.push(currentModelDataResult.error);
-      continue;
-    }
-    const currentModelData = currentModelDataResult.value;
-
-    let error: TransactionErrors | undefined;
-    let newSnapshot: ModelChangeSnapshot<M, keyof M & string> | undefined;
-
+    let newSnapshot: ModelChangeSnapshot<M, keyof M & string>;
     if (change.action === 'create') {
-      if (currentModelData) {
-        error = {
-          message: `Insert (local change) failed: ${change.modelName} ${change.modelId} data already exists`,
-          currentModelData,
-          change,
-        };
-      } else {
-        newSnapshot = {
-          transactionId,
-          type: 'insert',
-          data: change.data,
-        };
-      }
+      newSnapshot = {
+        transactionId,
+        type: 'insert',
+        data: change.data,
+      };
     } else if (change.action === 'update') {
-      if (!currentModelData) {
-        error = {
-          message: `Update (local change) failed: ${change.modelName} ${change.modelId} does not exist`,
-          currentModelData,
-          change,
-        };
-      } else {
-        const changes: ModelPendingChange<M, keyof M & string> = {};
-        for (const key in change.data) {
-          const modelKey = key as keyof typeof change.data & string;
-          const updated = change.data[modelKey] as
-            | ModelData<M, keyof M & string>[typeof modelKey]
-            | undefined;
+      const changes: ModelPendingChange<M, keyof M & string> = {};
+      for (const key in change.data) {
+        const modelKey = key as keyof typeof change.data & string;
+        const updated = change.data[modelKey] as
+          | ModelData<M, keyof M & string>[typeof modelKey]
+          | undefined;
 
-          if (updated !== undefined) {
-            changes[modelKey] = {
-              // original: currentModelData[modelKey],
-              updated,
-            };
-          }
+        if (updated !== undefined) {
+          changes[modelKey] = {
+            updated,
+          };
         }
-        newSnapshot = {
-          transactionId,
-          type: 'update',
-          changes,
-        };
       }
-    } else if (change.action === 'delete') {
-      if (!currentModelData) {
-        error = {
-          message: `Delete (local change) failed: ${change.modelName} ${change.modelId} does not exist`,
-          currentModelData,
-          change,
-        };
-      } else {
-        newSnapshot = {
-          transactionId,
-          type: 'delete',
-          // originalData: currentModelData,
-        };
-      }
+      newSnapshot = {
+        transactionId,
+        type: 'update',
+        changes,
+      };
+    } else {
+      newSnapshot = {
+        transactionId,
+        type: 'delete',
+      };
     }
 
-    if (error) {
-      errors.push(error);
-    } else if (newSnapshot) {
-      if (pendingModelChangeSnapshots) {
-        pendingModelChangeSnapshots.changeSnapshots.push(newSnapshot);
-      } else {
-        modelChangeSnapshots.push({
-          modelId: change.modelId,
-          modelName: change.modelName,
-          changeSnapshots: [...initialModelChangeSnapshots, newSnapshot],
-        });
-      }
+    if (pendingModelChangeSnapshots) {
+      pendingModelChangeSnapshots.changeSnapshots.push(newSnapshot);
+    } else {
+      modelChangeSnapshots.push({
+        modelId: change.modelId,
+        modelName: change.modelName,
+        changeSnapshots: [...initialModelChangeSnapshots, newSnapshot],
+      });
     }
-  }
-
-  if (errors.length > 0) {
-    return {
-      ok: false,
-      error: errors,
-    };
   }
 
   return {
-    ok: true,
-    value: {
-      lastSyncId: undefined,
-      modelDataPatches: [],
-      modelChangeSnapshots,
-      addPendingTransaction: {
-        transactionId,
-        lastSyncId: null,
-        affectedModels: modelChangeSnapshots.map((u) => ({
-          modelId: u.modelId,
-          modelName: u.modelName,
-        })),
-      },
-      commitPendingTransaction: undefined,
-      removePendingTransactionIds: [],
+    lastSyncId: undefined,
+    modelDataPatches: [],
+    modelChangeSnapshots,
+    addPendingTransaction: {
+      transactionId,
+      lastSyncId: null,
+      affectedModels: modelChangeSnapshots.map((u) => ({
+        modelId: u.modelId,
+        modelName: u.modelName,
+      })),
     },
+    commitPendingTransaction: undefined,
+    removePendingTransactionIds: [],
   };
 }
 
@@ -446,42 +326,50 @@ function getOptimisticUpdateForTransactionCommit<M extends Models>(
   {
     lastSyncId: stateLastSyncId,
     pendingTransactions,
+    getChangeSnapshots,
   }: InMemoryTransactionalState<M>,
-  { transactionId, lastSyncId: messageLastSyncId }: CommitTransactionMessage,
-): Result<StateUpdate<M> | null, string[]> {
-  if (messageLastSyncId <= stateLastSyncId) {
-    // This isn't necessarily an error, just means that the sync action for this transaction already came through
-    return {
-      ok: true,
-      value: null,
-    };
-  }
-
+  { transactionId, lastSyncId: transactionLastSyncId }: CommitTransactionMessage,
+): Result<StateUpdate<M> | null, string> {
   const toCommitTransaction = pendingTransactions.find(
     (t) => t.transactionId === transactionId,
   );
   if (!toCommitTransaction) {
     return {
       ok: false,
-      error: ['Could not find transaction to commit'],
+      error: 'Could not find transaction to commit',
     };
   }
   if (toCommitTransaction.lastSyncId !== null) {
     return {
       ok: false,
-      error: ['Cannot commit transaction that has already been committed'],
+      error: 'Cannot commit transaction that has already been committed',
     };
+  }
+
+  let modelChangeSnapshots: readonly ModelChangeSnapshots<
+    M,
+    keyof M & string
+  >[] = [];
+  if (transactionLastSyncId <= stateLastSyncId) {
+    // This means that the sync action for this transaction already came through
+    // That means the rollback of this transaction couldn't have happened when processing the sync action
+    // So we need to do that here
+    modelChangeSnapshots = removeChangeSnapshotsOfTransaction(
+      toCommitTransaction,
+      getChangeSnapshots,
+      modelChangeSnapshots,
+    );
   }
 
   return {
     ok: true,
     value: {
       lastSyncId: undefined,
-      modelChangeSnapshots: [],
+      modelChangeSnapshots,
       modelDataPatches: [],
       addPendingTransaction: undefined,
       commitPendingTransaction: {
-        lastSyncId: messageLastSyncId,
+        lastSyncId: transactionLastSyncId,
         transactionId,
       },
       removePendingTransactionIds: [],
@@ -492,20 +380,20 @@ function getOptimisticUpdateForTransactionCommit<M extends Models>(
 function getUpdatedStateForTransactionRollback<M extends Models>(
   { getChangeSnapshots, pendingTransactions }: InMemoryTransactionalState<M>,
   { transactionId }: RollbackTransactionMessage,
-): Result<StateUpdate<M>, string[]> {
+): Result<StateUpdate<M>, string> {
   const rollbackTransaction = pendingTransactions.find(
     (t) => t.transactionId == transactionId,
   );
   if (!rollbackTransaction) {
     return {
       ok: false,
-      error: ['Could not find transaction to rollback'],
+      error: 'Could not find transaction to rollback',
     };
   }
   if (rollbackTransaction.lastSyncId !== null) {
     return {
       ok: false,
-      error: ['Cannot rollback transaction that has already been committed'],
+      error: 'Cannot rollback transaction that has already been committed',
     };
   }
 
@@ -566,83 +454,39 @@ function removeChangeSnapshotsOfTransaction<M extends Models>(
   return modelChangeSnapshots;
 }
 
-export const applyChangeSnapshotsToData = <
+export const getOptimisticData = <
   M extends Models,
   ModelName extends keyof M & string,
 >(
   data: ModelData<M, ModelName> | undefined,
   changeSnapshots: readonly ModelChangeSnapshot<M, ModelName>[] | undefined,
-): Result<ModelData<M, ModelName> | undefined, TransactionErrors> => {
+): ModelData<M, ModelName> | undefined => {
   if (!changeSnapshots) {
-    return {
-      ok: true,
-      value: data,
-    };
+    return data;
   }
 
   let currentData = data;
   for (const snapshot of changeSnapshots) {
     if (snapshot.type === 'insert') {
-      if (currentData) {
-        return {
-          ok: false,
-          error: {
-            message:
-              'Invariant violation: insert changeSnapshot on existing data',
-            data,
-            changeSnapshots,
-            currentData,
-            snapshot,
-          },
-        };
-      }
       currentData = snapshot.data;
     } else if (snapshot.type === 'update') {
-      if (!currentData) {
-        return {
-          ok: false,
-          error: {
-            message:
-              'Invariant violation: update changeSnapshot on missing data',
-            data,
-            changeSnapshots,
-            currentData,
-            snapshot,
-          },
-        };
-      }
-      const patch: Partial<ModelData<M, ModelName>> = {};
-      for (const key in snapshot.changes) {
-        const change = snapshot.changes[key];
-        if (change) {
-          patch[key] = change.updated;
+      if (currentData) {
+        const patch: Partial<ModelData<M, ModelName>> = {};
+        for (const key in snapshot.changes) {
+          const change = snapshot.changes[key];
+          if (change) {
+            patch[key] = change.updated;
+          }
         }
-      }
-      currentData = {
-        ...currentData,
-        ...patch,
-      };
-    } else if (snapshot.type === 'delete') {
-      if (!currentData) {
-        return {
-          ok: false,
-          error: {
-            message:
-              'Invariant violation: delete changeSnapshot on missing data',
-            data,
-            changeSnapshots,
-            currentData,
-            snapshot,
-          },
+        currentData = {
+          ...currentData,
+          ...patch,
         };
       }
+    } else if (snapshot.type === 'delete') {
       currentData = undefined;
     }
   }
-  return {
-    ok: true,
-    value: currentData,
-  };
-};
 
-type TransactionErrors = Record<string, unknown>;
+  return currentData;
+};
