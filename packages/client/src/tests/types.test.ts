@@ -7,7 +7,6 @@ import {
   many,
   type LocalChanges,
 } from '../index';
-import { z } from 'zod';
 
 type M = {
   Post: {
@@ -39,10 +38,10 @@ type MS = {
 };
 
 const modelDefs: ModelDefs<M> = {
-  Post: { schemaVersion: 0 },
-  Author: { schemaVersion: 0 },
-  Tag: { schemaVersion: 0 },
-  PostTag: { schemaVersion: 0 },
+  Post: {},
+  Author: {},
+  Tag: {},
+  PostTag: {},
 };
 
 const relationshipDefs = {
@@ -71,28 +70,6 @@ const relationshipDefs = {
   },
 } satisfies ModelsRelationshipDefs<M>;
 
-const parsers = {
-  Post: z.object({
-    id: z.string(),
-    title: z.string(),
-    body: z.string(),
-    authorId: z.string(),
-  }),
-  Author: z.object({
-    id: z.string(),
-    name: z.string(),
-  }),
-  Tag: z.object({
-    id: z.string(),
-    name: z.string(),
-  }),
-  PostTag: z.object({
-    id: z.string(),
-    postId: z.string(),
-    tagId: z.string(),
-  }),
-};
-
 describe('Config', () => {
   test('Basic config', () => {
     expectTypeOf({
@@ -101,18 +78,9 @@ describe('Config', () => {
     }).toMatchTypeOf<ModelsConfig<MS>>();
   });
 
-  test('Config with parsers', () => {
-    expectTypeOf({
-      modelDefs,
-      parsers,
-      relationshipDefs,
-    }).toMatchTypeOf<ModelsConfig<MS>>();
-  });
-
   test('Config with mutationDefs', () => {
     expectTypeOf({
       modelDefs,
-      parsers,
       relationshipDefs,
       mutationDefs: {
         getChanges: () => [],

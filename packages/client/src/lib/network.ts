@@ -40,7 +40,6 @@ type LoadBootstrapResult<M extends Models> = Result<
 
 type HandshakeResponse = {
   type: 'handshake';
-  modelSchemaVersion: number;
   lastSyncId: number;
 };
 

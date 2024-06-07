@@ -13,14 +13,7 @@ import { openDB, type IDBPDatabase } from 'idb';
 const _METADATA = '_metadata';
 const _TRANSACTIONS = '_transactions';
 
-const DEFAULT_METADATA: Metadata = {
-  firstSyncId: 0,
-  lastSyncId: 0,
-  modelSchemaVersion: 0,
-  lastUpdatedAt: new Date(Date.UTC(1970, 0)).toISOString(),
-};
-
-export type CreateLocoSyncIdbAdapterOptions<MS extends ModelsSpec> = {
+export type CreateLocoSyncIdbAdapterOptions = {
   onBlocking?: (
     currentVersion: number,
     blockedVersion: number | null,
@@ -39,7 +32,7 @@ export type CreateLocoSyncIdbAdapterOptions<MS extends ModelsSpec> = {
 export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
   namespace: string,
   config: ModelsConfig<MS>,
-  options?: CreateLocoSyncIdbAdapterOptions<MS>,
+  options?: CreateLocoSyncIdbAdapterOptions,
 ): StorageAdapter<MS> => {
   type M = MS['models'];
 
@@ -145,7 +138,6 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       await Promise.all([
         metadataStore.put(
           {
-            ...DEFAULT_METADATA,
             ...metadata,
             lastSyncId,
             lastUpdatedAt: new Date().toISOString(),
@@ -232,7 +224,6 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
         ),
         metadataStore.add(
           {
-            ...DEFAULT_METADATA,
             firstSyncId: syncId,
             lastSyncId: syncId,
             lastUpdatedAt: new Date().toISOString(),

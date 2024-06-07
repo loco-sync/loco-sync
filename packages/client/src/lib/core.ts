@@ -1,5 +1,3 @@
-import { z } from 'zod';
-// TODO: Maybe move the ModelsRelationshipDefs types to this file?
 import type { ModelsRelationshipDefs } from './relationships';
 import type { ModelsIndexes } from './indexes';
 
@@ -21,7 +19,6 @@ export type ModelDefs<M extends Models> = {
 
 export type ModelDef = {
   preload?: boolean;
-  schemaVersion: number;
 };
 
 export type ModelsConfig<MS extends AnyModelsSpec> = {
@@ -147,8 +144,6 @@ type BaseSyncAction<ModelName extends string> = {
 };
 
 export interface Metadata {
-  // Should this be called databaseVersion?
-  modelSchemaVersion: number;
   firstSyncId: number;
   lastSyncId: number;
   lastUpdatedAt: string;

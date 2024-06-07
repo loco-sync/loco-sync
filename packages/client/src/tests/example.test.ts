@@ -23,8 +23,8 @@ type M = {
 };
 
 const modelDefs: ModelDefs<M> = {
-  Todo: { schemaVersion: 0 },
-  Author: { schemaVersion: 0 },
+  Todo: {},
+  Author: {},
 };
 
 const relationshipDefs = {
