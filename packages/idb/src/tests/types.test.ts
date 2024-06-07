@@ -40,10 +40,10 @@ type MS = {
 };
 
 const modelDefs: ModelDefs<M> = {
-  Post: { schemaVersion: 0 },
-  Author: { schemaVersion: 0 },
-  Tag: { schemaVersion: 0 },
-  PostTag: { schemaVersion: 0 },
+  Post: {},
+  Author: {},
+  Tag: {},
+  PostTag: {},
 };
 
 const relationshipDefs = {

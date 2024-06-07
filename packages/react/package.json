@@ -1,6 +1,6 @@
 {
   "name": "@loco-sync/react",
-  "version": "0.0.1-beta.20",
+  "version": "0.0.1-beta.21",
   "description": "React hooks for LocoSync, a sync engine for local-first applications",
   "author": "Kevin Kusch",
   "license": "MIT",

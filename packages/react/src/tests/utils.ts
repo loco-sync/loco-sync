@@ -53,12 +53,12 @@ export type MS = {
 };
 
 export const modelDefs: ModelDefs<M> = {
-  Group: { schemaVersion: 0, preload: true },
-  Post: { schemaVersion: 0, preload: true },
-  Author: { schemaVersion: 0, preload: true },
-  Tag: { schemaVersion: 0, preload: true },
-  PostTag: { schemaVersion: 0, preload: true },
-  PostTagAnnotation: { schemaVersion: 0, preload: true },
+  Group: { preload: true },
+  Post: { preload: true },
+  Author: { preload: true },
+  Tag: { preload: true },
+  PostTag: { preload: true },
+  PostTagAnnotation: { preload: true },
 };
 
 export const relationshipDefs = {
@@ -142,7 +142,6 @@ export const setup = (
       listener = _listener;
       listener({
         type: 'handshake',
-        modelSchemaVersion: 1,
         lastSyncId: 0,
       });
       return () => {};
