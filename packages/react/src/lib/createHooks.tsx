@@ -76,6 +76,7 @@ export interface LocoSyncReact<MS extends ModelsSpec> {
   };
   useMutation(): UseMutation<MS>;
   useIsHydrated: () => boolean;
+  useClient: () => LocoSyncClient<MS>;
 }
 
 type InternalContext<MS extends ModelsSpec> = {
@@ -181,12 +182,21 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
     return useContext().isHydrated;
   };
 
+  const useClient = () => {
+    const client = useContext().client;
+    if (!client) {
+      throw new Error('LocoSync context provider not found.');
+    }
+    return client;
+  }
+
   return {
     Provider,
     useQuery,
     useQueryOne,
     useMutation,
     useIsHydrated,
+    useClient,
   };
 };
 
