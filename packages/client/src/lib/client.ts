@@ -7,6 +7,7 @@ import {
   type ModelsConfig,
   type ModelFilter,
   type ModelData,
+  modelObjectKey,
 } from './core';
 import type { ModelIndex } from './indexes';
 import { ModelDataCache } from './model-data-cache';
@@ -50,6 +51,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
   #networkUnsubscribe?: () => void;
   #pendingTransactionQueue: CombinedPendingTransaction<MS>[];
   #futureSyncActions: SyncAction<MS['models'], keyof MS['models'] & string>[];
+  #tombstoneModelObjectKeys: Set<string>;
 
   #catchUpSyncCompleted: boolean;
   #lastSyncId: number;
@@ -65,6 +67,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#listeners = new Set();
     this.#futureSyncActions = [];
     this.#pendingTransactionQueue = [];
+    this.#tombstoneModelObjectKeys = new Set();
 
     this.#lastClientTransactionId = 0;
     this.#lastSyncId = 0;
@@ -82,10 +85,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
 
   getCache() {
     return this.#cache;
-  }
-
-  getStorage() {
-    return this.#storage;
   }
 
   addListener(listener: LocalSyncClientListener<MS>) {
@@ -137,6 +136,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
         this.#lastSyncId = bootstrapResult.value.firstSyncId;
         void this.#modelDataLoader.addNewSyncGroups(
           bootstrapResult.value.syncGroups,
+          this.#tombstoneModelObjectKeys,
         );
       } else {
         // TODO: Should probably retry in this case
@@ -151,9 +151,15 @@ export class LocoSyncClient<MS extends ModelsSpec> {
           await this.deltaSync(this.#lastSyncId, response.lastSyncId);
           this.#modelDataLoader.handleBootstrapsFromHandshake(
             response.syncGroups,
+            this.#tombstoneModelObjectKeys,
           );
         } else if (response.type === 'sync') {
           const { lastSyncId, sync } = response;
+          for (const syncAction of sync) {
+            if (syncAction.action === 'delete') {
+              this.#tombstoneModelObjectKeys.add(modelObjectKey(syncAction));
+            }
+          }
           if (this.#catchUpSyncCompleted) {
             this.#cache.processMessage({
               type: 'sync',
@@ -389,7 +395,10 @@ class ModelDataLoader<MS extends ModelsSpec> {
     return Array.from(this.#eagerModels);
   }
 
-  handleBootstrapsFromHandshake(handshakeSyncGroups: MS['syncGroup'][]) {
+  handleBootstrapsFromHandshake(
+    handshakeSyncGroups: MS['syncGroup'][],
+    tombstoneModelObjectKeys: Set<string>,
+  ) {
     const addedSyncGroups: MS['syncGroup'][] = [];
     const removedSyncGroups: MS['syncGroup'][] = [];
     const equals = this.#config.syncGroupDefs?.equals ?? Object.is;
@@ -416,7 +425,7 @@ class ModelDataLoader<MS extends ModelsSpec> {
       console.error("Removing sync groups isn't supported yet");
     }
 
-    void this.addNewSyncGroups(addedSyncGroups);
+    void this.addNewSyncGroups(addedSyncGroups, tombstoneModelObjectKeys);
   }
 
   /**
@@ -427,7 +436,10 @@ class ModelDataLoader<MS extends ModelsSpec> {
    *
    * @param syncGroups new syncGroups (via eager bootstrap result or handshake message)
    */
-  async addNewSyncGroups(syncGroups: MS['syncGroup'][]) {
+  async addNewSyncGroups(
+    syncGroups: MS['syncGroup'][],
+    tombstoneModelObjectKeys: Set<string>,
+  ) {
     if (!this.#config.syncGroupDefs) {
       console.error(
         'Cannot add new sync groups if no syncGroupDefs are defined in config',
@@ -458,9 +470,11 @@ class ModelDataLoader<MS extends ModelsSpec> {
         syncGroups: [syncGroup],
       });
       if (bootstrapResult.ok) {
-        await this.#storage.saveLazyBootstrap(bootstrapResult.value.bootstrap, [
-          syncGroup,
-        ]);
+        await this.#storage.saveLazyBootstrap(
+          bootstrapResult.value.bootstrap,
+          [syncGroup],
+          tombstoneModelObjectKeys,
+        );
         const syncGroupLoadStatus = this.#syncGroupLoadStatuses.get(syncGroup);
         if (syncGroupLoadStatus && !syncGroupLoadStatus.loaded) {
           this.#syncGroupLoadStatuses.set(syncGroup, { loaded: true });

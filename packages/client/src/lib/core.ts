@@ -78,10 +78,9 @@ export type MutationFn<MS extends ModelsSpec> = (
 
 export type Model = { id: string } & Record<string, unknown>;
 
-export type ModelData<
-  M extends Models,
-  ModelName extends keyof M,
-> = M[ModelName];
+export type ModelData<M extends Models, ModelName extends keyof M> = {
+  id: string;
+} & M[ModelName];
 
 export type ModelField<
   M extends Models,
@@ -185,4 +184,14 @@ export function createConfig<MS extends ModelsSpec>(
   config: ModelsConfig<MS>,
 ): ModelsConfig<MS> {
   return config;
+}
+
+export function modelObjectKey<MS extends ModelsSpec>({
+  modelId,
+  modelName,
+}: {
+  modelName: keyof MS['models'] & string;
+  modelId: string;
+}): string {
+  return `${modelName}:${modelId}`;
 }

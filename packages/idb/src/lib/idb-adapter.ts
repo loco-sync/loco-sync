@@ -7,6 +7,7 @@ import {
   type Models,
   type ModelFilter,
   type ModelIndex,
+  modelObjectKey,
 } from '@loco-sync/client';
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
 
@@ -103,7 +104,6 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
         pendingTransactions,
       };
     },
-    // TODO: Add test for multiple sync actions on a single model in one sync
     applySyncActions: async (lastSyncId, sync) => {
       const storeNames: string[] = [_TRANSACTIONS, _METADATA];
       for (const { modelName } of sync) {
@@ -114,14 +114,13 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       const tx = db.transaction(storeNames, 'readwrite');
       const metadataStore = tx.objectStore(_METADATA);
 
-      const metadata: Metadata<MS['syncGroup']> | undefined = await metadataStore.get(_METADATA);
+      const metadata: Metadata<MS['syncGroup']> | undefined =
+        await metadataStore.get(_METADATA);
       if (metadata && metadata.lastSyncId > lastSyncId) {
         await tx.done;
         return;
       }
 
-      // Is it valid to have multiple syncActions on the same model in a sync?
-      // I think it is, and that means I might have to handle these in order, or at the very least batch?
       await Promise.all(
         sync.map(async (syncAction) => {
           const store = tx.objectStore(syncAction.modelName);
@@ -195,15 +194,16 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       };
 
       await Promise.all([
-        saveBootstrap(tx, payload),
-        metadataStore.add(
-          metadata,
-          _METADATA,
-        ),
+        saveBootstrap(tx, payload, null),
+        metadataStore.add(metadata, _METADATA),
         tx.done,
       ]);
     },
-    saveLazyBootstrap: async (payload, syncGroups) => {
+    saveLazyBootstrap: async (
+      payload,
+      syncGroups,
+      tombstoneModelObjectKeys,
+    ) => {
       const db = await getDb();
 
       const allModelNames = Object.keys(config.modelDefs) as (keyof M &
@@ -212,7 +212,8 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       const tx = db.transaction([...allModelNames, _METADATA], 'readwrite');
 
       const metadataStore = tx.objectStore(_METADATA);
-      const metadata: Metadata<MS['syncGroup']> | undefined = await metadataStore.get(_METADATA);
+      const metadata: Metadata<MS['syncGroup']> | undefined =
+        await metadataStore.get(_METADATA);
 
       if (!metadata) {
         throw new Error(
@@ -220,30 +221,41 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
         );
       }
 
-      const newMetadata: Metadata<MS['syncGroup']> = {...metadata, syncGroups: [...metadata.syncGroups, ...syncGroups]}
+      const newMetadata: Metadata<MS['syncGroup']> = {
+        ...metadata,
+        syncGroups: [...metadata.syncGroups, ...syncGroups],
+      };
       await Promise.all([
-        saveBootstrap(tx, payload),
-        metadataStore.put(newMetadata,
-          _METADATA,
-        ),
+        saveBootstrap(tx, payload, tombstoneModelObjectKeys),
+        metadataStore.put(newMetadata, _METADATA),
         tx.done,
       ]);
     },
   };
 };
 
-async function saveBootstrap<M extends Models>(
-  tx: IDBPTransaction<unknown, string[], "readwrite">,
-  payload: BootstrapPayload<M>
+async function saveBootstrap<MS extends ModelsSpec>(
+  tx: IDBPTransaction<unknown, string[], 'readwrite'>,
+  payload: BootstrapPayload<MS['models']>,
+  tombstoneModelObjectKeys: Set<string> | null,
 ) {
   return Promise.all(
-    Object.keys(payload).map(async (modelName) => {
+    Object.keys(payload).map(async (key) => {
+      const modelName = key as keyof MS['models'] & string;
       const store = tx.objectStore(modelName);
-      const allData = payload[modelName as keyof M & string] ?? [];
+      const allData = payload[modelName] ?? [];
       await Promise.all(
         allData.map((data) => {
+          const objKey = modelObjectKey<MS>({
+            modelName,
+            modelId: data.id,
+          });
+          if (tombstoneModelObjectKeys?.has(objKey)) {
+            return;
+          }
           try {
-            return store.put(data);
+            // Important to use "add" instead of "put" to avoid overwriting data that might have come from a sync action
+            return store.add(data);
           } catch (e) {
             console.error(e);
             throw e;

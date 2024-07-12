@@ -74,9 +74,15 @@ export interface StorageAdapter<MS extends ModelsSpec> {
 
   /**
    * Save models and update metadata for a lazy bootstrap
+   *
+   * @param bootstrap
+   * @param syncGroups syncGroups that data belongs to, these syncGroups should be added to metadata.syncGroups
+   * @param tombstoneModelObjectKeys keys of model objects that have been deleted by sync actions.
+   * Model objects in bootstrap with these keys should not be saved to storage to prevent race conditions with sync actions.
    */
   saveLazyBootstrap(
     bootstrap: BootstrapPayload<MS['models']>,
     syncGroups: MS['syncGroup'][],
+    tombstoneModelObjectKeys: Set<string>,
   ): Promise<void>;
 }
