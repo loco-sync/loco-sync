@@ -57,9 +57,9 @@ export const config = createConfig<MS>({
 const networkAdapter: NetworkAdapter<MS> = {
   sendTransaction: async () => ({ ok: true, value: { lastSyncId: 0 } }),
   deltaSync: async () => ({ ok: true, value: { sync: [] } }),
-  loadBootstrap: async () => ({
+  bootstrap: async () => ({
     ok: true,
-    value: { lastSyncId: 0, bootstrap: {} },
+    value: { firstSyncId: 0, bootstrap: {}, syncGroups: [] },
   }),
   initSync: () => () => {},
 };
@@ -69,8 +69,8 @@ const storageAdapter: StorageAdapter<MS> = {
   applySyncActions: async () => {},
   removePendingTransaction: async () => {},
   createPendingTransaction: async () => 0,
-  saveBootstrap: async () => {},
-  loadBootstrap: async () => ({}),
+  saveEagerBootstrap: async () => {},
+  saveLazyBootstrap: async () => {},
   loadModelData: async () => [],
 };
 

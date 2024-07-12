@@ -1,10 +1,15 @@
 import type { ModelsRelationshipDefs } from './relationships';
 import type { ModelsIndexes } from './indexes';
 
-export type ModelsSpec<M extends Models = {}, MArgs = unknown> = {
+export type ModelsSpec<
+  M extends Models = {},
+  MArgs = unknown,
+  SyncGroup = unknown,
+> = {
   models: M;
   relationshipDefs: ModelsRelationshipDefs<M>;
   mutationArgs?: MArgs;
+  syncGroup?: SyncGroup;
 };
 
 type AnyModelsSpec = ModelsSpec<{}, any>;
@@ -18,7 +23,8 @@ export type ModelDefs<M extends Models> = {
 };
 
 export type ModelDef = {
-  preload?: boolean;
+  preloadFromStorage?: boolean;
+  initialBootstrap?: boolean;
 };
 
 export type ModelsConfig<MS extends AnyModelsSpec> = {
@@ -26,6 +32,7 @@ export type ModelsConfig<MS extends AnyModelsSpec> = {
   relationshipDefs?: ModelsRelationshipDefs<MS['models']>;
   indexes?: ModelsIndexes<MS['models']>;
   mutationDefs?: MutationDefs<MS>;
+  syncGroupDefs?: SyncGroupDefs<MS>;
 };
 
 type MutationDefs<MS extends ModelsSpec> = {
@@ -33,6 +40,13 @@ type MutationDefs<MS extends ModelsSpec> = {
     args: MS['mutationArgs'],
     store: ReadonlyModelDataStore<MS['models']>,
   ) => LocalChanges<MS['models']>;
+};
+
+type SyncGroupDefs<MS extends ModelsSpec> = {
+  modelsForPartialBootstrap: (
+    syncGroup: MS['syncGroup'],
+  ) => (keyof MS['models'] & string)[];
+  equals: (a: MS['syncGroup'], b: MS['syncGroup']) => boolean;
 };
 
 export type ReadonlyModelDataStore<M extends Models> = {
@@ -143,10 +157,11 @@ type BaseSyncAction<ModelName extends string> = {
   modelId: string;
 };
 
-export interface Metadata {
+export interface Metadata<SyncGroup> {
   firstSyncId: number;
   lastSyncId: number;
   lastUpdatedAt: string;
+  syncGroups: SyncGroup[];
 }
 
 export type BootstrapPayload<M extends Models> = {

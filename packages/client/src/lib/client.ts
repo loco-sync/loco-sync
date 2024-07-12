@@ -5,7 +5,10 @@ import {
   type MutationOptions,
   getMutationLocalChanges,
   type ModelsConfig,
+  type ModelFilter,
+  type ModelData,
 } from './core';
+import type { ModelIndex } from './indexes';
 import { ModelDataCache } from './model-data-cache';
 import type { CreateModelDataStoreOptions } from './model-data-store';
 import type { NetworkAdapter } from './network';
@@ -40,6 +43,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
   #storage: StorageAdapter<MS>;
   #config: ModelsConfig<MS>;
   #cache: ModelDataCache<MS>;
+  #modelDataLoader: ModelDataLoader<MS>;
 
   #listeners: Set<LocalSyncClientListener<MS>>;
   #lastClientTransactionId: number;
@@ -69,6 +73,11 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#catchUpSyncCompleted = false;
 
     this.#cache = new ModelDataCache(this, this.#config, opts.storeOptions);
+    this.#modelDataLoader = new ModelDataLoader(
+      this.#config,
+      this.#network,
+      this.#storage,
+    );
   }
 
   getCache() {
@@ -86,7 +95,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     };
   }
 
-  // TODO: Should this return a result of some sort?
   async start(): Promise<void> {
     const status = this.#status;
     if (status !== 'ready') {
@@ -103,6 +111,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       // DB Exists, so add pending transactions to queue and set lastSyncId
       const { metadata, pendingTransactions } = result;
       this.#lastSyncId = metadata.lastSyncId;
+      this.#modelDataLoader.addSyncGroupsFromStorage(metadata.syncGroups);
 
       const combinedPendingTransactions: CombinedPendingTransaction<MS>[] = [];
       for (const { args, id: storageTransactionId } of pendingTransactions) {
@@ -116,13 +125,19 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       }
       this.addPendingTransactionsToQueue(combinedPendingTransactions);
     } else {
-      const bootstrapResult = await this.#network.loadBootstrap();
+      const bootstrapResult = await this.#network.bootstrap({
+        type: 'eager',
+        models: this.#modelDataLoader.eagerModels,
+      });
       if (bootstrapResult.ok) {
-        await this.#storage.saveBootstrap(
+        await this.#storage.saveEagerBootstrap(
           bootstrapResult.value.bootstrap,
-          bootstrapResult.value.lastSyncId,
+          bootstrapResult.value.firstSyncId,
         );
-        this.#lastSyncId = bootstrapResult.value.lastSyncId;
+        this.#lastSyncId = bootstrapResult.value.firstSyncId;
+        void this.#modelDataLoader.addNewSyncGroups(
+          bootstrapResult.value.syncGroups,
+        );
       } else {
         // TODO: Should probably retry in this case
         this.#status = 'failed';
@@ -134,11 +149,12 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       async (response) => {
         if (response.type === 'handshake') {
           await this.deltaSync(this.#lastSyncId, response.lastSyncId);
+          this.#modelDataLoader.handleBootstrapsFromHandshake(
+            response.syncGroups,
+          );
         } else if (response.type === 'sync') {
           const { lastSyncId, sync } = response;
           if (this.#catchUpSyncCompleted) {
-            // TODO: Does ordering of sending sync events to memory vs. storage matter?
-            // storage first seems safer, but also slower?
             this.#cache.processMessage({
               type: 'sync',
               lastSyncId,
@@ -174,17 +190,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       this.#networkUnsubscribe();
     }
   }
-
-  // isSyncing() {
-  //   return this.#pendingTransactionQueue.length > 0;
-  // }
-
-  // // TODO: Implement, probably based on some analysis of requests. Or maybe this just forwards some events from the request?
-  // // Could also provide API to let users determine this for themselves, maybe based on stream of request attempts + times + outcomes
-  // // Or maybe just forward this to the NetworkClient, which should implement via checking e.g. websocket state
-  // isOnline() {
-  //   return false;
-  // }
 
   async addMutation(args: MutationArgs<MS>, options?: MutationOptions) {
     const status = this.#status;
@@ -328,4 +333,208 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       this.pushFromQueue();
     }
   }
+
+  async loadModelData<ModelName extends keyof MS['models'] & string>(
+    modelName: ModelName,
+    args:
+      | {
+          index: ModelIndex<MS['models'], ModelName>;
+          filter: ModelFilter<MS['models'], ModelName>;
+        }
+      | undefined,
+  ): Promise<ModelData<MS['models'], ModelName>[]> {
+    const loadResult = this.#modelDataLoader.isModelLoaded(modelName);
+    if (!loadResult.loaded) {
+      await loadResult.promise;
+    }
+    return this.#storage.loadModelData(modelName, args);
+  }
 }
+
+class ModelDataLoader<MS extends ModelsSpec> {
+  #config: ModelsConfig<MS>;
+  #network: NetworkAdapter<MS>;
+  #storage: StorageAdapter<MS>;
+
+  #eagerModels: Set<keyof MS['models'] & string>;
+  #lazyModelsToSyncGroups: Map<keyof MS['models'] & string, MS['syncGroup'][]>;
+  #syncGroupLoadStatuses: Map<
+    MS['syncGroup'],
+    { loaded: true } | { loaded: false; listeners: Set<() => void> }
+  >;
+
+  constructor(
+    config: ModelsConfig<MS>,
+    network: NetworkAdapter<MS>,
+    storage: StorageAdapter<MS>,
+  ) {
+    this.#config = config;
+    this.#network = network;
+    this.#storage = storage;
+
+    this.#eagerModels = new Set();
+    this.#lazyModelsToSyncGroups = new Map();
+    this.#syncGroupLoadStatuses = new Map();
+
+    for (const key in config.modelDefs) {
+      const modelName = key as keyof MS['models'] & string;
+      const modelDef = config.modelDefs[modelName];
+      if (modelDef.initialBootstrap) {
+        this.#eagerModels.add(modelName);
+      }
+    }
+  }
+
+  get eagerModels() {
+    return Array.from(this.#eagerModels);
+  }
+
+  handleBootstrapsFromHandshake(handshakeSyncGroups: MS['syncGroup'][]) {
+    const addedSyncGroups: MS['syncGroup'][] = [];
+    const removedSyncGroups: MS['syncGroup'][] = [];
+    const equals = this.#config.syncGroupDefs?.equals ?? Object.is;
+
+    const currentSyncGroups = Array.from(this.#syncGroupLoadStatuses.keys());
+    for (const currentGroup of currentSyncGroups) {
+      if (
+        !handshakeSyncGroups.some((newGroup) => equals(currentGroup, newGroup))
+      ) {
+        removedSyncGroups.push(currentGroup);
+      }
+    }
+    for (const newGroup of handshakeSyncGroups) {
+      if (
+        !currentSyncGroups.some((currentGroup) =>
+          equals(currentGroup, newGroup),
+        )
+      ) {
+        addedSyncGroups.push(newGroup);
+      }
+    }
+
+    if (removedSyncGroups.length > 0) {
+      console.error("Removing sync groups isn't supported yet");
+    }
+
+    void this.addNewSyncGroups(addedSyncGroups);
+  }
+
+  /**
+   * Adds new syncGroups to the client.
+   * This consists of running a lazy bootstrap request for each syncGroup, and saving the results to storage.
+   *
+   * TODO: May want to do some sort of batching or concurrent requests here
+   *
+   * @param syncGroups new syncGroups (via eager bootstrap result or handshake message)
+   */
+  async addNewSyncGroups(syncGroups: MS['syncGroup'][]) {
+    if (!this.#config.syncGroupDefs) {
+      console.error(
+        'Cannot add new sync groups if no syncGroupDefs are defined in config',
+      );
+      return;
+    }
+    for (const syncGroup of syncGroups) {
+      this.#syncGroupLoadStatuses.set(syncGroup, {
+        loaded: false,
+        listeners: new Set(),
+      });
+    }
+
+    for (const syncGroup of syncGroups) {
+      const models =
+        this.#config.syncGroupDefs.modelsForPartialBootstrap(syncGroup);
+      for (const model of models) {
+        const lazyData = this.#lazyModelsToSyncGroups.get(model);
+        if (lazyData) {
+          lazyData.push(syncGroup);
+        } else {
+          this.#lazyModelsToSyncGroups.set(model, [syncGroup]);
+        }
+      }
+      const bootstrapResult = await this.#network.bootstrap({
+        type: 'lazy',
+        models,
+        syncGroups: [syncGroup],
+      });
+      if (bootstrapResult.ok) {
+        await this.#storage.saveLazyBootstrap(bootstrapResult.value.bootstrap, [
+          syncGroup,
+        ]);
+        const syncGroupLoadStatus = this.#syncGroupLoadStatuses.get(syncGroup);
+        if (syncGroupLoadStatus && !syncGroupLoadStatus.loaded) {
+          this.#syncGroupLoadStatuses.set(syncGroup, { loaded: true });
+          for (const listener of syncGroupLoadStatus.listeners) {
+            listener();
+          }
+        }
+      } else {
+        console.error('Failed to bootstrap new sync group');
+        // TODO: Retry partial bootstrap?
+      }
+    }
+  }
+
+  private isSyncGroupLoaded(syncGroup: MS['syncGroup']): IsLoadedResult {
+    const status = this.#syncGroupLoadStatuses.get(syncGroup);
+    if (!status) {
+      console.error(`Sync group "${syncGroup}" not found`);
+      return { loaded: true };
+    }
+
+    if (status.loaded) {
+      return { loaded: true };
+    }
+
+    const promise = new Promise<void>((resolve) => {
+      status.listeners.add(resolve);
+    });
+
+    return {
+      loaded: false,
+      promise,
+    };
+  }
+
+  addSyncGroupsFromStorage(syncGroups: MS['syncGroup'][]) {
+    for (const syncGroup of syncGroups) {
+      this.#syncGroupLoadStatuses.set(syncGroup, { loaded: true });
+    }
+  }
+
+  isModelLoaded(modelName: keyof MS['models'] & string): IsLoadedResult {
+    if (this.#eagerModels.has(modelName)) {
+      return { loaded: true };
+    }
+
+    const syncGroups = this.#lazyModelsToSyncGroups.get(modelName);
+    if (!syncGroups) {
+      console.error(
+        `Model "${modelName}" isn't part of initial bootstrap or any sync groups, so can't be loaded`,
+      );
+      return { loaded: true };
+    }
+
+    const promises: Promise<any>[] = [];
+    for (const syncGroup of syncGroups) {
+      const loadResult = this.isSyncGroupLoaded(syncGroup);
+      if (!loadResult.loaded) {
+        promises.push(loadResult.promise);
+      }
+    }
+    if (promises.length > 0) {
+      return { loaded: false, promise: Promise.all(promises) };
+    }
+
+    return { loaded: true };
+  }
+}
+
+type IsLoadedResult =
+  | {
+      loaded: true;
+    }
+  | {
+      loaded: false;
+      promise: Promise<any>;
+    };

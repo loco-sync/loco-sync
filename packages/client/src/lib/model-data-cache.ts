@@ -34,7 +34,7 @@ type AnyQueryObserver<MS extends ModelsSpec> = QueryObserver<MS, any, any>;
 export class ModelDataCache<MS extends ModelsSpec> {
   #store: ModelDataStore<MS['models']>;
   #config: ModelsConfig<MS>;
-  #storage: StorageAdapter<MS>;
+  #client: LocoSyncClient<MS>;
   #observers: Set<AnyQueryObserver<MS>>;
   #loadedModelFilters: Map<
     keyof MS['models'] & string,
@@ -59,7 +59,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
     storeOpts?: CreateModelDataStoreOptions,
   ) {
     this.#store = createModelDataStore(storeOpts);
-    this.#storage = client.getStorage();
+    this.#client = client;
     this.#config = config;
     this.#observers = new Set();
     const modelNames = Object.keys(
@@ -73,7 +73,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
       if (message.type === 'started') {
         for (const modelName of modelNames) {
           const modelDef = this.#config.modelDefs[modelName];
-          if (modelDef.preload) {
+          if (modelDef.preloadFromStorage) {
             this.loadModelDataAsync(modelName, undefined, () => {});
           }
         }
@@ -278,7 +278,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
         setNotHydrated();
         await matchingPendingFilter.promise;
       } else {
-        const promise = this.#storage.loadModelData(
+        const promise = this.#client.loadModelData(
           modelName,
           modelIndex ? { index: modelIndex, filter: toLoadFilter } : undefined,
         );
@@ -652,19 +652,6 @@ type VisitResultFromStore<
   result: ModelResult<M, R, ModelName, Selection> | null;
   unsubscribers: Array<() => void>;
 };
-
-// Types of changes
-// - creates
-//   - matches query many (maybe because it passes a filter?). In theory should work if query one matches id but idk why that would be the case..
-//   - matches a relationship being fetched
-// - updates
-//   - scalar not involved with a relationship (or eventually filter?)
-//   - scalar used in "references" ?
-// - deletes
-//   -
-
-// Selection is needed to build sub-tree + set up subscriptions
-// Subscriptions of sub-tree are needed to clean up if that node no longer matches criteria
 
 function indexAndFilterForLoad<MS extends ModelsSpec>(
   modelName: keyof MS['models'] & string,

@@ -1,6 +1,5 @@
 import type {
   SyncAction,
-  Models,
   MutationArgs,
   BootstrapPayload,
   ModelsSpec,
@@ -12,52 +11,67 @@ type Unsubscribe = () => void;
 // TODO: Could include some function here to check whether we're online / a callback to detect if we change online/offline?
 export interface NetworkAdapter<MS extends ModelsSpec> {
   sendTransaction(args: MutationArgs<MS>): Promise<SendTransactionResult>;
-  deltaSync(
-    fromSyncId: number,
-    toSyncId: number,
-  ): Promise<DeltaSyncResult<MS['models']>>;
-  loadBootstrap(): Promise<LoadBootstrapResult<MS['models']>>;
-  initSync(
-    listener: NetworkMessageListener<MS['models']>,
-  ): Promise<Unsubscribe> | Unsubscribe;
+  bootstrap(args: BootstrapArgs<MS>): Promise<BootstrapResult<MS>>;
+  deltaSync(fromSyncId: number, toSyncId: number): Promise<DeltaSyncResult<MS>>;
+  initSync(listener: SyncListener<MS>): Promise<Unsubscribe> | Unsubscribe;
 }
 
 type NetworkErrorType = 'auth' | 'network' | 'server';
 
 type SendTransactionResult = Result<{ lastSyncId: number }, NetworkErrorType>;
 
-type DeltaSyncResult<M extends Models> = Result<
+type DeltaSyncResult<MS extends ModelsSpec> = Result<
   {
-    sync: SyncAction<M, keyof M & string>[];
+    sync: SyncAction<MS['models'], keyof MS['models'] & string>[];
   },
   NetworkErrorType
 >;
 
-type LoadBootstrapResult<M extends Models> = Result<
-  { bootstrap: BootstrapPayload<M>; lastSyncId: number },
+export type BootstrapArgs<MS extends ModelsSpec> =
+  | EagerBootstrapArgs<MS>
+  | LazyBootstrapArgs<MS>;
+
+export type EagerBootstrapArgs<MS extends ModelsSpec> = {
+  type: 'eager';
+  models: (keyof MS['models'] & string)[];
+};
+
+export type LazyBootstrapArgs<MS extends ModelsSpec> = {
+  type: 'lazy';
+  models: (keyof MS['models'] & string)[];
+  syncGroups: MS['syncGroup'][];
+};
+
+type BootstrapResult<MS extends ModelsSpec> = Result<
+  {
+    bootstrap: BootstrapPayload<MS['models']>;
+    firstSyncId: number;
+    syncGroups: MS['syncGroup'][];
+  },
   NetworkErrorType
 >;
 
-type HandshakeResponse = {
+type HandshakeResponse<MS extends ModelsSpec> = {
   type: 'handshake';
   lastSyncId: number;
+  syncGroups: MS['syncGroup'][];
 };
 
-type SyncMessage<M extends Models> = {
+type SyncDataMessage<MS extends ModelsSpec> = {
   type: 'sync';
   lastSyncId: number;
-  sync: SyncAction<M, keyof M & string>[];
+  sync: SyncAction<MS['models'], keyof MS['models'] & string>[];
 };
 
 type Disconnected = {
   type: 'disconnected';
 };
 
-export type NetworkMessage<M extends Models> =
-  | SyncMessage<M>
-  | HandshakeResponse
+export type SyncMessage<MS extends ModelsSpec> =
+  | SyncDataMessage<MS>
+  | HandshakeResponse<MS>
   | Disconnected;
 
-export type NetworkMessageListener<M extends Models> = (
-  event: NetworkMessage<M>,
+export type SyncListener<MS extends ModelsSpec> = (
+  message: SyncMessage<MS>,
 ) => void;

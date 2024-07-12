@@ -8,7 +8,7 @@ import {
   type ModelFilter,
   type ModelIndex,
 } from '@loco-sync/client';
-import { openDB, type IDBPDatabase } from 'idb';
+import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
 
 const _METADATA = '_metadata';
 const _TRANSACTIONS = '_transactions';
@@ -114,7 +114,7 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       const tx = db.transaction(storeNames, 'readwrite');
       const metadataStore = tx.objectStore(_METADATA);
 
-      const metadata: Metadata | undefined = await metadataStore.get(_METADATA);
+      const metadata: Metadata<MS['syncGroup']> | undefined = await metadataStore.get(_METADATA);
       if (metadata && metadata.lastSyncId > lastSyncId) {
         await tx.done;
         return;
@@ -164,23 +164,6 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       const db = await getDb();
       await db.delete(_TRANSACTIONS, id);
     },
-    loadBootstrap: async () => {
-      const db = await getDb();
-
-      const allModelNames = Object.keys(config.modelDefs) as (keyof M &
-        string)[];
-
-      const tx = db.transaction(allModelNames, 'readonly');
-      const result = {} as BootstrapPayload<M>;
-      await Promise.all(
-        allModelNames.map(async (modelName) => {
-          const store = tx.objectStore(modelName);
-          result[modelName] = await store.getAll();
-        }),
-      );
-
-      return result;
-    },
     loadModelData: async (modelName, args) => {
       const db = await getDb();
       if (!args) {
@@ -195,7 +178,7 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
         return data;
       }
     },
-    saveBootstrap: async (payload, syncId) => {
+    saveEagerBootstrap: async (payload, firstSyncId) => {
       const db = await getDb();
 
       const allModelNames = Object.keys(config.modelDefs) as (keyof M &
@@ -204,30 +187,43 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       const tx = db.transaction([...allModelNames, _METADATA], 'readwrite');
 
       const metadataStore = tx.objectStore(_METADATA);
+      const metadata: Metadata<MS['syncGroup']> = {
+        firstSyncId,
+        lastSyncId: firstSyncId,
+        lastUpdatedAt: new Date().toISOString(),
+        syncGroups: [],
+      };
 
       await Promise.all([
-        Promise.all(
-          Object.keys(payload).map(async (modelName) => {
-            const store = tx.objectStore(modelName);
-            const allData = payload[modelName as keyof M & string] ?? [];
-            await Promise.all(
-              allData.map((data) => {
-                try {
-                  return store.put(data);
-                } catch (e) {
-                  console.error(e);
-                  throw e;
-                }
-              }),
-            );
-          }),
-        ),
+        saveBootstrap(tx, payload),
         metadataStore.add(
-          {
-            firstSyncId: syncId,
-            lastSyncId: syncId,
-            lastUpdatedAt: new Date().toISOString(),
-          },
+          metadata,
+          _METADATA,
+        ),
+        tx.done,
+      ]);
+    },
+    saveLazyBootstrap: async (payload, syncGroups) => {
+      const db = await getDb();
+
+      const allModelNames = Object.keys(config.modelDefs) as (keyof M &
+        string)[];
+
+      const tx = db.transaction([...allModelNames, _METADATA], 'readwrite');
+
+      const metadataStore = tx.objectStore(_METADATA);
+      const metadata: Metadata<MS['syncGroup']> | undefined = await metadataStore.get(_METADATA);
+
+      if (!metadata) {
+        throw new Error(
+          'Invariant violation: cannot save lazy bootstrap if metadata does not exist',
+        );
+      }
+
+      const newMetadata: Metadata<MS['syncGroup']> = {...metadata, syncGroups: [...metadata.syncGroups, ...syncGroups]}
+      await Promise.all([
+        saveBootstrap(tx, payload),
+        metadataStore.put(newMetadata,
           _METADATA,
         ),
         tx.done,
@@ -235,6 +231,28 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
     },
   };
 };
+
+async function saveBootstrap<M extends Models>(
+  tx: IDBPTransaction<unknown, string[], "readwrite">,
+  payload: BootstrapPayload<M>
+) {
+  return Promise.all(
+    Object.keys(payload).map(async (modelName) => {
+      const store = tx.objectStore(modelName);
+      const allData = payload[modelName as keyof M & string] ?? [];
+      await Promise.all(
+        allData.map((data) => {
+          try {
+            return store.put(data);
+          } catch (e) {
+            console.error(e);
+            throw e;
+          }
+        }),
+      );
+    }),
+  );
+}
 
 function formatFilterForIndex<
   M extends Models,

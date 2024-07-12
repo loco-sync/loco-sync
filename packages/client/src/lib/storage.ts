@@ -9,7 +9,7 @@ import type {
 } from './core';
 import type { ModelIndex } from './indexes';
 
-type PendingTransaction<MS extends ModelsSpec> = {
+export type StoragePendingTransaction<MS extends ModelsSpec> = {
   id: number;
   args: MutationArgs<MS>;
 };
@@ -21,8 +21,8 @@ export interface StorageAdapter<MS extends ModelsSpec> {
    */
   getMetadataAndPendingTransactions(): Promise<
     | {
-        metadata: Metadata;
-        pendingTransactions: PendingTransaction<MS>[];
+        metadata: Metadata<MS['syncGroup']>;
+        pendingTransactions: StoragePendingTransaction<MS>[];
       }
     | undefined
   >;
@@ -54,11 +54,6 @@ export interface StorageAdapter<MS extends ModelsSpec> {
    */
   removePendingTransaction(transactionId: number): Promise<void>;
 
-  /**
-   * Load all model data to bootstrap the client
-   */
-  loadBootstrap(): Promise<BootstrapPayload<MS['models']>>;
-
   loadModelData<ModelName extends keyof MS['models'] & string>(
     modelName: ModelName,
     args:
@@ -70,10 +65,18 @@ export interface StorageAdapter<MS extends ModelsSpec> {
   ): Promise<ModelData<MS['models'], ModelName>[]>;
 
   /**
-   * Load all model data to bootstrap the client
+   * Save models and update metadata for an eager bootstrap
    */
-  saveBootstrap(
+  saveEagerBootstrap(
     bootstrap: BootstrapPayload<MS['models']>,
-    lastSyncId: number,
+    firstSyncId: number,
+  ): Promise<void>;
+
+  /**
+   * Save models and update metadata for a lazy bootstrap
+   */
+  saveLazyBootstrap(
+    bootstrap: BootstrapPayload<MS['models']>,
+    syncGroups: MS['syncGroup'][],
   ): Promise<void>;
 }

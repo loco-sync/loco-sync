@@ -7,9 +7,9 @@ import {
   type BootstrapPayload,
   createConfig,
   type NetworkAdapter,
-  type NetworkMessage,
+  type SyncMessage,
   type StorageAdapter,
-  type NetworkMessageListener,
+  type SyncListener,
 } from '@loco-sync/client';
 
 type M = {
@@ -53,12 +53,12 @@ export type MS = {
 };
 
 export const modelDefs: ModelDefs<M> = {
-  Group: { preload: true },
-  Post: { preload: true },
-  Author: { preload: true },
-  Tag: { preload: true },
-  PostTag: { preload: true },
-  PostTagAnnotation: { preload: true },
+  Group: { preloadFromStorage: true, initialBootstrap: true },
+  Post: { preloadFromStorage: true, initialBootstrap: true },
+  Author: { preloadFromStorage: true, initialBootstrap: true },
+  Tag: { preloadFromStorage: true, initialBootstrap: true },
+  PostTag: { preloadFromStorage: true, initialBootstrap: true },
+  PostTagAnnotation: { preloadFromStorage: true, initialBootstrap: true },
 };
 
 export const relationshipDefs = {
@@ -102,8 +102,8 @@ export const fakeStorageAdapter: StorageAdapter<MS> = {
   applySyncActions: async () => {},
   removePendingTransaction: async () => {},
   createPendingTransaction: async () => 0,
-  saveBootstrap: async () => {},
-  loadBootstrap: async () => ({}),
+  saveEagerBootstrap: async () => {},
+  saveLazyBootstrap: async () => {},
   loadModelData: async () => [],
 };
 
@@ -120,7 +120,7 @@ export const setup = (
     relationshipDefs,
   });
 
-  let listener: NetworkMessageListener<MS['models']> | undefined;
+  let listener: SyncListener<MS> | undefined;
   let lastSyncId = 0;
 
   const networkAdapter: NetworkAdapter<MS> = {
@@ -129,12 +129,13 @@ export const setup = (
       return { ok: true, value: { lastSyncId } };
     },
     deltaSync: async () => ({ ok: true, value: { sync: [] } }),
-    loadBootstrap: async () => {
+    bootstrap: async () => {
       return {
         ok: true,
         value: {
           bootstrap,
-          lastSyncId: 1,
+          firstSyncId: 1,
+          syncGroups: [],
         },
       };
     },
@@ -143,6 +144,7 @@ export const setup = (
       listener({
         type: 'handshake',
         lastSyncId: 0,
+        syncGroups: [],
       });
       return () => {};
     },
@@ -151,9 +153,6 @@ export const setup = (
 
   const storageAdapter: StorageAdapter<MS> = {
     ...fakeStorageAdapter,
-    async loadBootstrap() {
-      return bootstrap;
-    },
     async loadModelData(modelName, args) {
       if (args) {
         throw new Error(
@@ -170,7 +169,7 @@ export const setup = (
     config,
   });
 
-  const sendMessage = (message: NetworkMessage<M>) => {
+  const sendMessage = (message: SyncMessage<MS>) => {
     listener?.(message);
   };
 
