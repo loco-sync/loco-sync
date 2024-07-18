@@ -1,9 +1,9 @@
 import { createModelDataStore } from '../../lib/model-data-store';
-import type { M } from './utils';
+import type { MS } from '../utils';
 
 describe('ModelDataStore.processMessage()', () => {
   it('Can edit a field after it is changed in the second sync of payload', () => {
-    const store = createModelDataStore<M>();
+    const store = createModelDataStore<MS['models']>();
     store.loadBootstrap({
       Post: [
         {
@@ -247,7 +247,7 @@ describe('ModelDataStore.processMessage()', () => {
   });
 
   it('Insert, update, and delete on entity', () => {
-    const store = createModelDataStore<M>();
+    const store = createModelDataStore<MS['models']>();
 
     // Create Post
     store.processMessage({
@@ -310,7 +310,7 @@ describe('ModelDataStore.processMessage()', () => {
   });
 
   it('Delete then insert on entity', () => {
-    const store = createModelDataStore<M>();
+    const store = createModelDataStore<MS['models']>();
     store.loadBootstrap({
       Post: [
         {
@@ -386,7 +386,7 @@ describe('ModelDataStore.processMessage()', () => {
   });
 
   it('Sync before commitTransaction with subsequent transaction', () => {
-    const store = createModelDataStore<M>();
+    const store = createModelDataStore<MS['models']>();
     store.loadBootstrap({
       Post: [
         {
@@ -470,7 +470,7 @@ describe('ModelDataStore.processMessage()', () => {
             title: 'added back title',
             body: 'added back body',
             authorId: 'A1',
-          }
+          },
         },
       ],
     });

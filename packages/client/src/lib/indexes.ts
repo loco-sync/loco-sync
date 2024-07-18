@@ -39,7 +39,7 @@ export function narrowFilterForIndex<
 ): ModelFilter<M, ModelName> {
   const result: ModelFilter<M, ModelName> = {};
   for (const field of index.fields) {
-    result[field] = filter[field];
+    result[field] = filter[field] as ModelFilter<M, ModelName>[typeof field];
   }
   return result;
 }
