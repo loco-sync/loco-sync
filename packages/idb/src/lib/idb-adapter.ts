@@ -28,8 +28,6 @@ export type CreateLocoSyncIdbAdapterOptions = {
   onTerminated?: () => void;
 };
 
-// TODO: Figure out what to do on version changes. Seems like version might need to be fetched from backend?
-// TODO: What durability level to use on transactions? Don't want issues with processing sync actions twice.
 export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
   namespace: string,
   config: ModelsConfig<MS>,
@@ -38,7 +36,6 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
   type M = MS['models'];
 
   let _db: IDBPDatabase | undefined = undefined;
-  // TODO: What version number?
   const version = 1;
   const dbPromise = openDB(namespace, version, {
     upgrade(db, oldVersion, newVersion, transaction, event) {
@@ -116,7 +113,10 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
 
       const metadata: Metadata<MS['syncGroup']> | undefined =
         await metadataStore.get(_METADATA);
-      if (metadata && metadata.lastSyncId > lastSyncId) {
+      if (!metadata) {
+        throw new Error('Cannot apply sync actions if metadata does not exist');
+      }
+      if (metadata.lastSyncId > lastSyncId) {
         await tx.done;
         return;
       }
@@ -204,6 +204,12 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       syncGroups,
       tombstoneModelObjectKeys,
     ) => {
+      const syncGroupDefs = config.syncGroupDefs;
+      if (!syncGroupDefs) {
+        throw new Error(
+          'Cannot save lazy bootstrap if config does not have syncGroupDefs',
+        );
+      }
       const db = await getDb();
 
       const allModelNames = Object.keys(config.modelDefs) as (keyof M &
@@ -217,8 +223,18 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
 
       if (!metadata) {
         throw new Error(
-          'Invariant violation: cannot save lazy bootstrap if metadata does not exist',
+          'Cannot save lazy bootstrap if metadata does not exist',
         );
+      }
+      for (const syncGroup of syncGroups) {
+        const matchesMetadataSyncGroup = metadata.syncGroups.some((sg) =>
+          syncGroupDefs.equals(syncGroup, sg),
+        );
+        if (matchesMetadataSyncGroup) {
+          throw new Error(
+            'Cannot save lazy bootstrap for syncGroup already saved to metadata',
+          );
+        }
       }
 
       const newMetadata: Metadata<MS['syncGroup']> = {
@@ -239,13 +255,13 @@ async function saveBootstrap<MS extends ModelsSpec>(
   payload: BootstrapPayload<MS['models']>,
   tombstoneModelObjectKeys: Set<string> | null,
 ) {
-  return Promise.all(
+  await Promise.all(
     Object.keys(payload).map(async (key) => {
       const modelName = key as keyof MS['models'] & string;
       const store = tx.objectStore(modelName);
       const allData = payload[modelName] ?? [];
       await Promise.all(
-        allData.map((data) => {
+        allData.map(async (data) => {
           const objKey = modelObjectKey<MS>({
             modelName,
             modelId: data.id,
@@ -253,13 +269,14 @@ async function saveBootstrap<MS extends ModelsSpec>(
           if (tombstoneModelObjectKeys?.has(objKey)) {
             return;
           }
-          try {
-            // Important to use "add" instead of "put" to avoid overwriting data that might have come from a sync action
-            return store.add(data);
-          } catch (e) {
-            console.error(e);
-            throw e;
+          const existingData = await store.get(data.id);
+          if (existingData) {
+            return;
           }
+          // Important to use "add" instead of "put" to avoid overwriting data that might have come from a sync action
+          // However, need to check if data exists before calling  "add" because will fail and abort the current transaction
+          // Another possibility is running each command with it's own transaction and removing the check - no idea on the performance tradeoffs
+          await store.add(data);
         }),
       );
     }),

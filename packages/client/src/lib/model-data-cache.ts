@@ -6,6 +6,7 @@ import type {
   Models,
   ModelsConfig,
   ModelsSpec,
+  SyncAction,
 } from './core';
 import {
   findIndexForFilter,
@@ -34,7 +35,7 @@ type AnyQueryObserver<MS extends ModelsSpec> = QueryObserver<MS, any, any>;
 export class ModelDataCache<MS extends ModelsSpec> {
   #store: ModelDataStore<MS['models']>;
   #config: ModelsConfig<MS>;
-  #client: LocoSyncClient<MS>;
+  #loadModelData: LocoSyncClient<MS>['loadModelData'];
   #observers: Set<AnyQueryObserver<MS>>;
   #loadedModelFilters: Map<
     keyof MS['models'] & string,
@@ -49,17 +50,20 @@ export class ModelDataCache<MS extends ModelsSpec> {
     keyof MS['models'] & string,
     {
       filter: ModelFilter<MS['models'], keyof MS['models'] & string>;
+      lastSyncId: number;
+      syncActions: SyncAction<MS['models'], keyof MS['models'] & string>[];
       promise: Promise<ModelData<MS['models'], keyof MS['models'] & string>[]>;
     }[]
   >;
 
   constructor(
-    client: LocoSyncClient<MS>,
+    addClientListener: LocoSyncClient<MS>['addListener'],
+    loadModelData: LocoSyncClient<MS>['loadModelData'],
     config: ModelsConfig<MS>,
     storeOpts?: CreateModelDataStoreOptions,
   ) {
     this.#store = createModelDataStore(storeOpts);
-    this.#client = client;
+    this.#loadModelData = loadModelData;
     this.#config = config;
     this.#observers = new Set();
     const modelNames = Object.keys(
@@ -69,7 +73,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
     this.#loadedModelFilters = new Map(modelNames.map((name) => [name, []]));
     this.#pendingModelFilters = new Map(modelNames.map((name) => [name, []]));
 
-    client.addListener((message) => {
+    addClientListener((message) => {
       if (message.type === 'started') {
         for (const modelName of modelNames) {
           const modelDef = this.#config.modelDefs[modelName];
@@ -87,7 +91,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
 
   addObserver(observer: AnyQueryObserver<MS>) {
     this.#observers.add(observer);
-    this.loadResultsForObserver(observer);
+    return this.loadResultsForObserver(observer);
   }
 
   removeObserver(observer: AnyQueryObserver<MS>) {
@@ -103,7 +107,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
     if (message.type === 'sync') {
       const filteredSync: typeof message.sync = [];
       for (const syncAction of message.sync) {
-        if (syncAction.action === 'insert') {
+        if (syncAction.action === 'insert' || syncAction.action === 'update') {
           const matchingLoadedFilter = this.#loadedModelFilters
             .get(syncAction.modelName)!
             .find((f) => dataPassesFilter(syncAction.data, f));
@@ -112,6 +116,18 @@ export class ModelDataCache<MS extends ModelsSpec> {
           // If data matches one, should that be applied store or accrued to apply afterwards?
           if (matchingLoadedFilter) {
             filteredSync.push(syncAction);
+          } else {
+            // TODO: Could data match more than one index? How to deal with that if so?
+            const matchingPendingFilter = this.#pendingModelFilters
+              .get(syncAction.modelName)!
+              .find(({ filter }) => dataPassesFilter(syncAction.data, filter));
+            if (matchingPendingFilter) {
+              matchingPendingFilter.syncActions.push(syncAction);
+              matchingPendingFilter.lastSyncId = Math.max(
+                message.lastSyncId,
+                matchingPendingFilter.lastSyncId,
+              );
+            }
           }
         } else {
           filteredSync.push(syncAction);
@@ -127,14 +143,16 @@ export class ModelDataCache<MS extends ModelsSpec> {
       // Also this is making the assumption that only data that is loaded will be modified - seems reasonable for now though
       this.#store.processMessage(message);
     }
-
-    // this.#store.processMessage(message);
   }
 
-  private loadResultsForObserver(observer: AnyQueryObserver<MS>) {
+  private loadResultsForObserver(
+    observer: AnyQueryObserver<MS>,
+  ): Promise<void> | undefined {
     const loadedFromStore = this.loadResultsForObserverFromStore(observer);
-    if (!loadedFromStore) {
-      this.loadResultsForObserverAsync(observer);
+    if (loadedFromStore) {
+      return;
+    } else {
+      return this.loadResultsForObserverAsync(observer);
     }
   }
 
@@ -278,16 +296,29 @@ export class ModelDataCache<MS extends ModelsSpec> {
         setNotHydrated();
         await matchingPendingFilter.promise;
       } else {
-        const promise = this.#client.loadModelData(
+        const promise = this.#loadModelData(
           modelName,
           modelIndex ? { index: modelIndex, filter: toLoadFilter } : undefined,
         );
 
-        const pendingFilterValue = { filter: toLoadFilter, promise };
+        const pendingFilterValue = {
+          filter: toLoadFilter,
+          promise,
+          lastSyncId: 0,
+          syncActions: [],
+        };
         this.#pendingModelFilters.get(modelName)!.push(pendingFilterValue);
         setNotHydrated();
 
         const loadedModelData = await promise;
+
+        if (pendingFilterValue.syncActions.length > 0) {
+          this.#store.processMessage({
+            type: 'syncCatchUp',
+            lastSyncId: pendingFilterValue.lastSyncId,
+            sync: pendingFilterValue.syncActions,
+          });
+        }
 
         this.#loadedModelFilters.get(modelName)!.push(toLoadFilter);
         this.#pendingModelFilters
@@ -625,7 +656,7 @@ function filterForModelRelationship<
 ): ModelFilter<M, ReferencedModelName> {
   const filter: ModelFilter<M, ReferencedModelName> = {};
   for (const { base, reference } of relationshipDef.fields) {
-    filter[reference] = modelData[base] as unknown as ModelData<
+    filter[reference] = modelData[base] as unknown as ModelFilter<
       M,
       ReferencedModelName
     >[ModelField<M, ReferencedModelName>];

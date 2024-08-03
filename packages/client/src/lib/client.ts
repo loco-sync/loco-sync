@@ -23,7 +23,7 @@ export type LocoSyncOptions<MS extends ModelsSpec> = {
   storeOptions?: CreateModelDataStoreOptions;
 };
 
-export type LocalSyncClientListener<MS extends ModelsSpec> = (args: {
+export type LocoSyncClientListener<MS extends ModelsSpec> = (args: {
   type: 'started';
 }) => void;
 
@@ -47,11 +47,16 @@ export class LocoSyncClient<MS extends ModelsSpec> {
   #cache: ModelDataCache<MS>;
   #loader: ModelDataLoader<MS>;
 
-  #listeners: Set<LocalSyncClientListener<MS>>;
+  #listeners: Set<LocoSyncClientListener<MS>>;
   #lastClientTransactionId: number;
   #networkUnsubscribe?: () => void;
   #pendingTransactionQueue: CombinedPendingTransaction<MS>[];
-  #futureSyncActions: SyncAction<MS['models'], keyof MS['models'] & string>[];
+  #futureSyncs:
+    | {
+        lastSyncId: number;
+        syncActions: SyncAction<MS['models'], keyof MS['models'] & string>[];
+      }
+    | undefined;
   #tombstoneModelObjectKeys: Set<string>;
 
   #catchUpSyncCompleted: boolean;
@@ -66,7 +71,6 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#storage = opts.storage;
 
     this.#listeners = new Set();
-    this.#futureSyncActions = [];
     this.#pendingTransactionQueue = [];
     this.#tombstoneModelObjectKeys = new Set();
 
@@ -76,7 +80,12 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     this.#pushInFlight = false;
     this.#catchUpSyncCompleted = false;
 
-    this.#cache = new ModelDataCache(this, this.#config, opts.storeOptions);
+    this.#cache = new ModelDataCache(
+      (...params) => this.addListener(...params),
+      (...params) => this.loadModelData(...params),
+      this.#config,
+      opts.storeOptions,
+    );
     this.#loader = new ModelDataLoader(
       this.#config,
       this.#network,
@@ -88,7 +97,7 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     return this.#cache;
   }
 
-  addListener(listener: LocalSyncClientListener<MS>) {
+  addListener(listener: LocoSyncClientListener<MS>) {
     this.#listeners.add(listener);
     return () => {
       this.#listeners.delete(listener);
@@ -146,37 +155,43 @@ export class LocoSyncClient<MS extends ModelsSpec> {
       }
     }
 
-    this.#networkUnsubscribe = await this.#network.initSync(
-      async (response) => {
-        if (response.type === 'handshake') {
-          await this.deltaSync(this.#lastSyncId, response.lastSyncId);
-          this.#loader.handleBootstrapsFromHandshake(
-            response.syncGroups,
-            this.#tombstoneModelObjectKeys,
-          );
-        } else if (response.type === 'sync') {
-          const { lastSyncId, sync } = response;
-          for (const syncAction of sync) {
-            if (syncAction.action === 'delete') {
-              this.#tombstoneModelObjectKeys.add(modelObjectKey(syncAction));
-            }
+    this.#networkUnsubscribe = await this.#network.initSync(async (message) => {
+      if (message.type === 'handshake') {
+        await this.deltaSync(this.#lastSyncId, message.lastSyncId);
+        this.#loader.handleBootstrapsFromHandshake(
+          message.syncGroups,
+          this.#tombstoneModelObjectKeys,
+        );
+      } else if (message.type === 'sync') {
+        const { lastSyncId, sync } = message;
+        for (const syncAction of sync) {
+          if (syncAction.action === 'delete') {
+            this.#tombstoneModelObjectKeys.add(modelObjectKey(syncAction));
           }
-          if (this.#catchUpSyncCompleted) {
-            this.#cache.processMessage({
-              type: 'sync',
-              lastSyncId,
-              sync,
-            });
-            await this.#storage.applySyncActions(lastSyncId, sync);
-          } else {
-            this.#futureSyncActions.push(...sync);
-          }
-        } else if (response.type === 'disconnected') {
-          this.#catchUpSyncCompleted = false;
-          this.#futureSyncActions = [];
         }
-      },
-    );
+        if (this.#catchUpSyncCompleted) {
+          this.#cache.processMessage({
+            type: 'sync',
+            lastSyncId,
+            sync,
+          });
+          await this.#storage.applySyncActions(lastSyncId, sync);
+        } else {
+          if (this.#futureSyncs) {
+            this.#futureSyncs.lastSyncId = message.lastSyncId;
+            this.#futureSyncs.syncActions.push(...sync);
+          } else {
+            this.#futureSyncs = {
+              lastSyncId,
+              syncActions: sync,
+            };
+          }
+        }
+      } else if (message.type === 'disconnected') {
+        this.#catchUpSyncCompleted = false;
+        this.#futureSyncs = undefined;
+      }
+    });
 
     this.#status = 'running';
     for (const listener of this.#listeners) {
@@ -255,15 +270,20 @@ export class LocoSyncClient<MS extends ModelsSpec> {
         throw new Error('SyncDelta request failed');
       }
 
-      const fullSync = result.value.sync.concat(this.#futureSyncActions);
+      let lastSyncId = toSyncId;
+      let sync = result.value.sync;
+      if (this.#futureSyncs) {
+        sync = result.value.sync.concat(this.#futureSyncs.syncActions);
+        lastSyncId = this.#futureSyncs.lastSyncId;
+      }
       this.#cache.processMessage({
         type: 'sync',
-        lastSyncId: toSyncId,
-        sync: fullSync,
+        lastSyncId,
+        sync,
       });
-      await this.#storage.applySyncActions(toSyncId, fullSync);
-      this.#futureSyncActions = [];
-      this.#lastSyncId = toSyncId;
+      await this.#storage.applySyncActions(lastSyncId, sync);
+      this.#futureSyncs = undefined;
+      this.#lastSyncId = lastSyncId;
       this.#catchUpSyncCompleted = true;
     } catch (e) {
       console.error(e);

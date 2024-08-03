@@ -1,5 +1,4 @@
 import type { ModelFilter, ModelsSpec } from './core';
-import type { ModelDataCache } from './model-data-cache';
 import type { ModelRelationshipSelection, ModelResult } from './relationships';
 
 export class QueryObserver<
@@ -11,24 +10,19 @@ export class QueryObserver<
     ModelName
   >,
 > {
-  #cache: ModelDataCache<MS>;
-  #listeners: Set<() => void>;
+  #listener: (() => void) | undefined;
   #resultMany: QueryManyResult<MS, ModelName, Selection>;
   #resultOne: QueryOneResult<MS, ModelName, Selection>;
 
   constructor(
-    cache: ModelDataCache<MS>,
     public readonly modelName: ModelName,
     public readonly modelFilter:
       | ModelFilter<MS['models'], ModelName>
       | undefined,
     public readonly selection: Selection | undefined,
   ) {
-    this.#listeners = new Set();
     this.#resultMany = { data: [], isHydrated: false };
     this.#resultOne = { data: undefined, isHydrated: false };
-    this.#cache = cache;
-    cache.addObserver(this);
   }
 
   setResult(
@@ -48,9 +42,7 @@ export class QueryObserver<
       isHydrated: true,
     };
 
-    for (const listener of this.#listeners) {
-      listener();
-    }
+    this.#listener?.();
   }
 
   setNotHydrated() {
@@ -61,19 +53,19 @@ export class QueryObserver<
     this.#resultMany = { data: [], isHydrated: false };
     this.#resultOne = { data: undefined, isHydrated: false };
 
-    for (const listener of this.#listeners) {
-      listener();
-    }
+    this.#listener?.();
   }
 
-  subscribe(callback: () => void) {
-    this.#listeners.add(callback);
+  subscribe(listener: () => void) {
+    if (this.#listener) {
+      throw new Error(
+        'QueryObserver can only be subscribed by one listener at a time.',
+      );
+    }
 
+    this.#listener = listener;
     return () => {
-      this.#listeners.delete(callback);
-      if (this.#listeners.size === 0) {
-        this.#cache.removeObserver(this);
-      }
+      this.#listener = undefined;
     };
   }
 

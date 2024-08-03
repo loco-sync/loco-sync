@@ -82,7 +82,9 @@ export type CreateModelDataStoreOptions = {
   verbose?: boolean;
 };
 
-export const createModelDataStore = <M extends Models>(opts?: CreateModelDataStoreOptions): ModelDataStore<M> => {
+export const createModelDataStore = <M extends Models>(
+  opts?: CreateModelDataStoreOptions,
+): ModelDataStore<M> => {
   const modelsData: Map<
     keyof M & string,
     Map<
@@ -177,10 +179,7 @@ export const createModelDataStore = <M extends Models>(opts?: CreateModelDataSto
     }
     const prev = modelsData.get(modelName)?.get(modelId);
     const newChangeSnapshots = maybeChangeSnapshots ?? prev?.changeSnapshots;
-    const newOptimisticData = getOptimisticData(
-      data,
-      newChangeSnapshots,
-    );
+    const newOptimisticData = getOptimisticData(data, newChangeSnapshots);
     modelMap.set(modelId, {
       confirmedData: data,
       changeSnapshots: newChangeSnapshots,

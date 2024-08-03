@@ -1,6 +1,7 @@
 import type {
   LocalChanges,
   ModelData,
+  ModelField,
   Models,
   SyncAction,
 } from './core';
@@ -62,7 +63,8 @@ export type ToProcessMessage<M extends Models> =
   | SyncMessage<M>
   | StartTransactionMessage<M>
   | CommitTransactionMessage
-  | RollbackTransactionMessage;
+  | RollbackTransactionMessage
+  | SyncCatchUpMessage<M>;
 type SyncMessage<M extends Models> = {
   type: 'sync';
   lastSyncId: number;
@@ -81,6 +83,11 @@ type CommitTransactionMessage = {
 type RollbackTransactionMessage = {
   type: 'rollbackTransaction';
   transactionId: number;
+};
+type SyncCatchUpMessage<M extends Models> = {
+  type: 'syncCatchUp';
+  lastSyncId: number;
+  sync: SyncAction<M, keyof M & string>[];
 };
 
 type ModelChangeSnapshots<
@@ -116,7 +123,7 @@ export const getStateUpdate = <M extends Models>(
   state: InMemoryTransactionalState<M>,
   message: ToProcessMessage<M>,
 ): StateUpdate<M> | null => {
-  if (message.type === 'sync') {
+  if (message.type === 'sync' || message.type === 'syncCatchUp') {
     return getUpdatedStateForSync(state, message);
   }
 
@@ -151,17 +158,23 @@ function getUpdatedStateForSync<M extends Models>(
     getChangeSnapshots,
     pendingTransactions,
   }: InMemoryTransactionalState<M>,
-  { lastSyncId: newLastSyncId, sync }: SyncMessage<M>,
+  message: SyncMessage<M> | SyncCatchUpMessage<M>,
 ): StateUpdate<M> {
+  let newLastSyncId: number | undefined = message.lastSyncId;
+  const sync = message.sync;
   if (newLastSyncId <= stateLastSyncId) {
-    return {
-      lastSyncId: undefined,
-      modelChangeSnapshots: [],
-      modelDataPatches: [],
-      addPendingTransaction: undefined,
-      commitPendingTransaction: undefined,
-      removePendingTransactionIds: [],
-    };
+    if (message.type === 'sync') {
+      return {
+        lastSyncId: undefined,
+        modelChangeSnapshots: [],
+        modelDataPatches: [],
+        addPendingTransaction: undefined,
+        commitPendingTransaction: undefined,
+        removePendingTransactionIds: [],
+      };
+    } else {
+      newLastSyncId = undefined;
+    }
   }
 
   // Step 1: Get updated data
@@ -169,7 +182,7 @@ function getUpdatedStateForSync<M extends Models>(
   // Create state patches w/o changeSnapshots - these will be set below only once based on the final data
   const modelDataPatches: ModelDataPatch<M, keyof M & string>[] = [];
   for (const syncAction of sync) {
-    if (syncAction.syncId <= stateLastSyncId) {
+    if (message.type === 'sync' && syncAction.syncId <= stateLastSyncId) {
       continue;
     }
 
@@ -214,12 +227,14 @@ function getUpdatedStateForSync<M extends Models>(
 
   // Step 2: Find transactions that occurred before or at lastSyncId
   const removeTransactions: PendingTransaction<M>[] = [];
-  for (const transaction of pendingTransactions) {
-    if (
-      transaction.lastSyncId !== null &&
-      transaction.lastSyncId <= newLastSyncId
-    ) {
-      removeTransactions.push(transaction);
+  if (newLastSyncId !== undefined) {
+    for (const transaction of pendingTransactions) {
+      if (
+        transaction.lastSyncId !== null &&
+        transaction.lastSyncId <= newLastSyncId
+      ) {
+        removeTransactions.push(transaction);
+      }
     }
   }
 
@@ -242,9 +257,7 @@ function getUpdatedStateForSync<M extends Models>(
     modelChangeSnapshots,
     addPendingTransaction: undefined,
     commitPendingTransaction: undefined,
-    removePendingTransactionIds: removeTransactions.map(
-      (t) => t.transactionId,
-    ),
+    removePendingTransactionIds: removeTransactions.map((t) => t.transactionId),
   };
 }
 
@@ -328,7 +341,10 @@ function getOptimisticUpdateForTransactionCommit<M extends Models>(
     pendingTransactions,
     getChangeSnapshots,
   }: InMemoryTransactionalState<M>,
-  { transactionId, lastSyncId: transactionLastSyncId }: CommitTransactionMessage,
+  {
+    transactionId,
+    lastSyncId: transactionLastSyncId,
+  }: CommitTransactionMessage,
 ): Result<StateUpdate<M> | null, string> {
   const toCommitTransaction = pendingTransactions.find(
     (t) => t.transactionId === transactionId,
@@ -473,9 +489,12 @@ export const getOptimisticData = <
       if (currentData) {
         const patch: Partial<ModelData<M, ModelName>> = {};
         for (const key in snapshot.changes) {
+          const modelKey = key as ModelField<M, ModelName>;
           const change = snapshot.changes[key];
           if (change) {
-            patch[key] = change.updated;
+            patch[modelKey] = change.updated as Partial<
+              ModelData<M, ModelName>
+            >[typeof modelKey];
           }
         }
         currentData = {

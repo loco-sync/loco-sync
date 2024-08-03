@@ -188,7 +188,7 @@ export const createLocoSyncReact = <MS extends ModelsSpec>(
       throw new Error('LocoSync context provider not found.');
     }
     return client;
-  }
+  };
 
   return {
     Provider,
@@ -223,17 +223,23 @@ const useQueryOneFromStore = <
       JSON.stringify(modelFilter) ||
     JSON.stringify(observerRef.current.selection) !== JSON.stringify(selection)
   ) {
-    observerRef.current = new QueryObserver(
-      cache,
-      modelName,
-      modelFilter,
-      selection,
-    );
+    const newObserver = new QueryObserver(modelName, modelFilter, selection);
+    observerRef.current = newObserver;
+    cache.addObserver(newObserver);
   }
   const observer = observerRef.current;
 
   return useSyncExternalStore(
-    useCallback((cb) => observer.subscribe(cb), [observer]),
+    useCallback(
+      (cb) => {
+        const unsubscribe = observer.subscribe(cb);
+        return () => {
+          unsubscribe();
+          cache.removeObserver(observer);
+        };
+      },
+      [observer, cache],
+    ),
     useCallback(() => observer.getSnapshotOne(), [observer]),
   );
 };
@@ -261,17 +267,23 @@ const useQueryManyFromStore = <
       JSON.stringify(modelFilter) ||
     JSON.stringify(observerRef.current.selection) !== JSON.stringify(selection)
   ) {
-    observerRef.current = new QueryObserver(
-      cache,
-      modelName,
-      modelFilter,
-      selection,
-    );
+    const newObserver = new QueryObserver(modelName, modelFilter, selection);
+    observerRef.current = newObserver;
+    cache.addObserver(newObserver);
   }
   const observer = observerRef.current;
 
   return useSyncExternalStore(
-    useCallback((cb) => observer.subscribe(cb), [observer]),
+    useCallback(
+      (cb) => {
+        const unsubscribe = observer.subscribe(cb);
+        return () => {
+          unsubscribe();
+          cache.removeObserver(observer);
+        };
+      },
+      [observer, cache],
+    ),
     useCallback(() => observer.getSnapshotMany(), [observer]),
   );
 };

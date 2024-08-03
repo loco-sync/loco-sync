@@ -85,6 +85,9 @@ export class ModelDataLoader<MS extends ModelsSpec> {
     syncGroups: MS['syncGroup'][],
     tombstoneModelObjectKeys: Set<string>,
   ) {
+    if (syncGroups.length === 0) {
+      return;
+    }
     if (!this.#config.syncGroupDefs) {
       console.error(
         'Cannot add new sync groups if no syncGroupDefs are defined in config',
@@ -156,6 +159,9 @@ export class ModelDataLoader<MS extends ModelsSpec> {
   }
 
   addSyncGroupsFromStorage(syncGroups: MS['syncGroup'][]) {
+    if (syncGroups.length === 0) {
+      return;
+    }
     if (!this.#config.syncGroupDefs) {
       console.error(
         'Cannot add new sync groups if no syncGroupDefs are defined in config',

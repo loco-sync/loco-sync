@@ -58,36 +58,38 @@ test('Calls onError and rollsback changes, useQuery', async () => {
     <Provider notHydratedFallback={null} client={client}>
       <Test2
         onClick={() => {
-          client.addMutation([
-            {
-              modelName: 'Group',
-              modelId: '2',
-              action: 'create',
-              data: {
-                id: '2',
-                name: 'group 2',
+          client.addMutation(
+            [
+              {
+                modelName: 'Group',
+                modelId: '2',
+                action: 'create',
+                data: {
+                  id: '2',
+                  name: 'group 2',
+                },
               },
-            },
-            {
-              modelName: 'Group',
-              modelId: '3',
-              action: 'create',
-              data: {
-                id: '3',
-                name: 'group 3',
+              {
+                modelName: 'Group',
+                modelId: '3',
+                action: 'create',
+                data: {
+                  id: '3',
+                  name: 'group 3',
+                },
               },
-            },
-            {
-              modelName: 'Group',
-              modelId: '4',
-              action: 'create',
-              data: {
-                id: '4',
-                name: 'group 4',
+              {
+                modelName: 'Group',
+                modelId: '4',
+                action: 'create',
+                data: {
+                  id: '4',
+                  name: 'group 4',
+                },
               },
-            },
-          ], {onError
-          });
+            ],
+            { onError },
+          );
         }}
       />
     </Provider>,
@@ -96,15 +98,11 @@ test('Calls onError and rollsback changes, useQuery', async () => {
   // Use findByRole instead of getByRole because of loco-sync hydration
   const button = await screen.findByRole('button', { name: /click me/i });
 
-  expect(screen.getByText(/Group/)).toHaveTextContent(
-    'Group count: 1',
-  );
+  expect(screen.getByText(/Group/)).toHaveTextContent('Group count: 1');
 
   await user.click(button);
 
-  expect(screen.getByText(/Group/)).toHaveTextContent(
-    'Group count: 1',
-  );
+  expect(screen.getByText(/Group/)).toHaveTextContent('Group count: 1');
 
   expect(onError).toHaveBeenCalledTimes(1);
 });
@@ -123,7 +121,8 @@ const { config, client } = setup(bootstrap, {
     sendTransaction: async () => ({ ok: false, error: 'server' }),
   },
 });
-const { Provider, useQueryOne, useQuery, useMutation } = createLocoSyncReact(config);
+const { Provider, useQueryOne, useQuery, useMutation } =
+  createLocoSyncReact(config);
 
 const Test1 = ({ onClick }: { onClick: () => void }) => {
   const { data } = useQueryOne('Group', { id: '1' });

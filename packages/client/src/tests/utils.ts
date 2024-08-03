@@ -1,15 +1,9 @@
 import {
-  type ModelDefs,
   type ModelsRelationshipDefs,
   one,
   many,
-  LocoSyncClient,
-  type BootstrapPayload,
-  createConfig,
   type NetworkAdapter,
-  type SyncMessage,
   type StorageAdapter,
-  type SyncListener,
 } from '../index';
 
 type M = {
@@ -64,15 +58,6 @@ export type MS = {
   syncGroup: SG;
 };
 
-export const modelDefs: ModelDefs<M> = {
-  Group: { preloadFromStorage: true, initialBootstrap: true },
-  Post: { preloadFromStorage: true, initialBootstrap: true },
-  Author: { preloadFromStorage: true, initialBootstrap: true },
-  Tag: { preloadFromStorage: true, initialBootstrap: true },
-  PostTag: { preloadFromStorage: true, initialBootstrap: true },
-  PostTagAnnotation: { preloadFromStorage: true, initialBootstrap: true },
-};
-
 export const relationshipDefs = {
   Post: {
     author: one('Author', {
@@ -109,99 +94,168 @@ export const relationshipDefs = {
   },
 } satisfies ModelsRelationshipDefs<M>;
 
-export const fakeStorageAdapter: StorageAdapter<MS> = {
-  getMetadataAndPendingTransactions: async () => undefined,
-  applySyncActions: async () => {},
-  removePendingTransaction: async () => {},
-  createPendingTransaction: async () => 0,
-  saveEagerBootstrap: async () => {},
-  saveLazyBootstrap: async () => {},
-  loadModelData: async () => [],
+export function controlledPromise<T>() {
+  let resolve: (value: T | PromiseLike<T>) => void;
+  let reject: (reason?: any) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve: resolve!, reject: reject! };
+}
+
+type ExpectedFnCall = NetworkFnCall | StorageFnCall;
+
+type NetworkFnCall<
+  Fn extends keyof NetworkAdapter<MS> = keyof NetworkAdapter<MS>,
+> = {
+  type: 'network';
+  fn: Fn;
+  params: Parameters<NetworkAdapter<MS>[Fn]>;
+  result: ReturnType<NetworkAdapter<MS>[Fn]>;
+  onParams?: (...params: Parameters<NetworkAdapter<MS>[Fn]>) => void;
+};
+
+type StorageFnCall<
+  Fn extends keyof StorageAdapter<MS> = keyof StorageAdapter<MS>,
+> = {
+  type: 'storage';
+  fn: keyof StorageAdapter<MS>;
+  params: Parameters<StorageAdapter<MS>[Fn]>;
+  result: ReturnType<StorageAdapter<MS>[Fn]>;
+  onParams?: (...params: Parameters<StorageAdapter<MS>[Fn]>) => void;
 };
 
 type SetupOptions = {
-  networkAdapter?: Partial<NetworkAdapter<MS>>;
+  verbose?: boolean;
 };
 
-export const setup = (
-  bootstrap: BootstrapPayload<M>,
-  options?: SetupOptions,
-) => {
-  const config = createConfig<MS>({
-    modelDefs,
-    relationshipDefs,
-  });
+export const setup = (opts?: SetupOptions) => {
+  const expectedFnCalls: Array<ExpectedFnCall> = [];
+  let fnCallCount = 0;
+  const verbose = opts?.verbose ?? false;
 
-  let listener: SyncListener<MS> | undefined;
-  let lastSyncId = 0;
-
-  const network: NetworkAdapter<MS> = {
-    sendTransaction: async (args) => {
-      lastSyncId += args.length;
-      return { ok: true, value: { lastSyncId } };
-    },
-    deltaSync: async () => ({ ok: true, value: { sync: [] } }),
-    bootstrap: async (args) => {
-      if (args.type === 'eager') {
-        return {
-          ok: true,
-          value: {
-            bootstrap,
-            firstSyncId: 1,
-            syncGroups: [],
-          },
-        };
-      } else {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        return {
-          ok: true,
-          value: {
-            bootstrap,
-            firstSyncId: 1,
-            syncGroups: [],
-          },
-        };
+  const makeNetworkFn =
+    <Fn extends keyof NetworkAdapter<MS>>(fn: Fn) =>
+    (
+      ...params: Parameters<NetworkAdapter<MS>[Fn]>
+    ): ReturnType<NetworkAdapter<MS>[Fn]> => {
+      fnCallCount++;
+      const nextCall = expectedFnCalls.shift();
+      if (verbose) {
+        console.log({
+          type: 'network',
+          nextCall,
+          fn,
+          params,
+          fnCallCount,
+        });
       }
-    },
-    initSync: (_listener) => {
-      listener = _listener;
-      listener({
-        type: 'handshake',
-        lastSyncId: 0,
-        syncGroups: [],
-      });
-      return () => {};
-    },
-    ...options?.networkAdapter,
-  };
-
-  const storage: StorageAdapter<MS> = {
-    ...fakeStorageAdapter,
-    async loadModelData(modelName, args) {
-      if (args) {
+      if (!nextCall) {
         throw new Error(
-          "This fake test storage adapter doesn't handle extra loadModelData args.",
+          `Unexpected call to network.${fn}, call #${fnCallCount}`,
         );
       }
-      return bootstrap[modelName] ?? [];
-    },
+      if (nextCall.type !== 'network' || nextCall.fn !== fn) {
+        throw new Error(
+          `Expected ${nextCall.type}.${nextCall.fn}, got network.${fn}, call #${fnCallCount}`,
+        );
+      }
+      expect(params).toEqual(nextCall.params);
+      nextCall.onParams?.(...params);
+      return nextCall.result as ReturnType<NetworkAdapter<MS>[Fn]>;
+    };
+
+  const network: NetworkAdapter<MS> = {
+    sendTransaction: makeNetworkFn('sendTransaction'),
+    deltaSync: makeNetworkFn('deltaSync'),
+    bootstrap: makeNetworkFn('bootstrap'),
+    initSync: makeNetworkFn('initSync'),
   };
 
-  const client = new LocoSyncClient({
-    network,
-    storage,
-    config,
-  });
+  const makeStorageFn =
+    <Fn extends keyof StorageAdapter<MS>>(fn: Fn) =>
+    (
+      ...params: Parameters<StorageAdapter<MS>[Fn]>
+    ): ReturnType<StorageAdapter<MS>[Fn]> => {
+      fnCallCount++;
+      const nextCall = expectedFnCalls.shift();
+      if (verbose) {
+        console.log({
+          type: 'storage',
+          nextCall,
+          fn,
+          params,
+          fnCallCount,
+        });
+      }
+      if (!nextCall) {
+        throw new Error(
+          `Unexpected call to storage.${fn}, call #${fnCallCount}`,
+        );
+      }
+      if (nextCall.type !== 'storage' || nextCall.fn !== fn) {
+        throw new Error(
+          `Expected ${nextCall.type}.${nextCall.fn}, got storage.${fn}, call #${fnCallCount}`,
+        );
+      }
+      expect(params).toEqual(nextCall.params);
 
-  const sendMessage = (message: SyncMessage<MS>) => {
-    listener?.(message);
+      nextCall.onParams?.(...params);
+      return nextCall.result as ReturnType<StorageAdapter<MS>[Fn]>;
+    };
+
+  const storage: StorageAdapter<MS> = {
+    getMetadataAndPendingTransactions: makeStorageFn(
+      'getMetadataAndPendingTransactions',
+    ),
+    applySyncActions: makeStorageFn('applySyncActions'),
+    createPendingTransaction: makeStorageFn('createPendingTransaction'),
+    removePendingTransaction: makeStorageFn('removePendingTransaction'),
+    // Types are weird because loadModelData is itself generic
+    loadModelData: makeStorageFn(
+      'loadModelData',
+    ) as StorageAdapter<MS>['loadModelData'],
+    saveEagerBootstrap: makeStorageFn('saveEagerBootstrap'),
+    saveLazyBootstrap: makeStorageFn('saveLazyBootstrap'),
+  };
+
+  const addNetworkFnCall = <Fn extends keyof NetworkAdapter<MS>>(
+    fn: Fn,
+    params: Parameters<NetworkAdapter<MS>[Fn]>,
+    result: ReturnType<NetworkAdapter<MS>[Fn]>,
+    onParams?: (...params: Parameters<NetworkAdapter<MS>[Fn]>) => void,
+  ) => {
+    let fnCall: NetworkFnCall<Fn> = {
+      type: 'network',
+      fn,
+      params,
+      result,
+      onParams,
+    };
+    expectedFnCalls.push(fnCall);
+  };
+
+  const addStorageFnCall = <Fn extends keyof StorageAdapter<MS>>(
+    fn: Fn,
+    params: Parameters<StorageAdapter<MS>[Fn]>,
+    result: ReturnType<StorageAdapter<MS>[Fn]>,
+    onParams?: (...params: Parameters<StorageAdapter<MS>[Fn]>) => void,
+  ) => {
+    let fnCall: StorageFnCall<Fn> = {
+      type: 'storage',
+      fn,
+      params,
+      result,
+      onParams,
+    };
+    expectedFnCalls.push(fnCall);
   };
 
   return {
-    client,
-    config,
     storage,
     network,
-    sendMessage,
+    addNetworkFnCall,
+    addStorageFnCall,
   };
 };

@@ -20,7 +20,7 @@ type NetworkErrorType = 'auth' | 'network' | 'server';
 
 type SendTransactionResult = Result<{ lastSyncId: number }, NetworkErrorType>;
 
-type DeltaSyncResult<MS extends ModelsSpec> = Result<
+export type DeltaSyncResult<MS extends ModelsSpec> = Result<
   {
     sync: SyncAction<MS['models'], keyof MS['models'] & string>[];
   },
@@ -42,7 +42,7 @@ export type LazyBootstrapArgs<MS extends ModelsSpec> = {
   syncGroups: MS['syncGroup'][];
 };
 
-type BootstrapResult<MS extends ModelsSpec> = Result<
+export type BootstrapResult<MS extends ModelsSpec> = Result<
   {
     bootstrap: BootstrapPayload<MS['models']>;
     firstSyncId: number;
