@@ -171,7 +171,7 @@ describe('LocoSyncClient.start()', () => {
         relationshipDefs: relationshipDefs,
         syncGroupDefs: {
           equals: (a, b) => a.type === b.type,
-          modelsForPartialBootstrap: (syncGroup) => {
+          lazyBootstrapModels: (syncGroup) => {
             if (syncGroup.type === '1') {
               return ['Post'];
             } else {

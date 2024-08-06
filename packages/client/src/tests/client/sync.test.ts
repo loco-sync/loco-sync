@@ -88,7 +88,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap(syncGroup) {
+          lazyBootstrapModels(syncGroup) {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -494,7 +494,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -667,7 +667,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -837,7 +837,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -1005,7 +1005,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -1170,7 +1170,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -1323,7 +1323,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -1477,7 +1477,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -1602,7 +1602,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -1782,7 +1782,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -1892,7 +1892,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -2048,7 +2048,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -2204,7 +2204,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -2362,7 +2362,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,
@@ -2518,7 +2518,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
         },
         relationshipDefs,
         syncGroupDefs: {
-          modelsForPartialBootstrap: () => {
+          lazyBootstrapModels: () => {
             return ['Group'];
           },
           equals: (a, b) => a.type === b.type,

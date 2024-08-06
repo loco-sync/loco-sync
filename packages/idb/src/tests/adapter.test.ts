@@ -14,7 +14,7 @@ function createStorage() {
     modelDefs,
     relationshipDefs,
     syncGroupDefs: {
-      modelsForPartialBootstrap: () => ['Post', 'PostTag'],
+      lazyBootstrapModels: () => ['Post', 'PostTag'],
       equals: (a, b) => a.type === b.type,
     },
   });
@@ -394,7 +394,7 @@ describe('IdbStorageAdapter.loadModelData()', () => {
       modelDefs,
       relationshipDefs,
       syncGroupDefs: {
-        modelsForPartialBootstrap: () => ['Post', 'PostTag'],
+        lazyBootstrapModels: () => ['Post', 'PostTag'],
         equals: (a, b) => a.type === b.type,
       },
       indexes: {
@@ -429,7 +429,7 @@ describe('IdbStorageAdapter.loadModelData()', () => {
       modelDefs,
       relationshipDefs,
       syncGroupDefs: {
-        modelsForPartialBootstrap: () => ['Post', 'PostTag'],
+        lazyBootstrapModels: () => ['Post', 'PostTag'],
         equals: (a, b) => a.type === b.type,
       },
       indexes: {
@@ -471,7 +471,7 @@ describe('IdbStorageAdapter.loadModelData()', () => {
       modelDefs,
       relationshipDefs,
       syncGroupDefs: {
-        modelsForPartialBootstrap: () => ['Post', 'PostTag'],
+        lazyBootstrapModels: () => ['Post', 'PostTag'],
         equals: (a, b) => a.type === b.type,
       },
       indexes: {
@@ -538,7 +538,7 @@ describe('IdbStorageAdapter.loadModelData()', () => {
       modelDefs,
       relationshipDefs,
       syncGroupDefs: {
-        modelsForPartialBootstrap: () => ['Post', 'PostTag'],
+        lazyBootstrapModels: () => ['Post', 'PostTag'],
         equals: (a, b) => a.type === b.type,
       },
       indexes: {

@@ -43,7 +43,7 @@ type MutationDefs<MS extends ModelsSpec> = {
 };
 
 type SyncGroupDefs<MS extends ModelsSpec> = {
-  modelsForPartialBootstrap: (
+  lazyBootstrapModels: (
     syncGroup: MS['syncGroup'],
   ) => (keyof MS['models'] & string)[];
   equals: (a: MS['syncGroup'], b: MS['syncGroup']) => boolean;

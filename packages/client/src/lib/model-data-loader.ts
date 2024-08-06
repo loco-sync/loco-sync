@@ -102,7 +102,7 @@ export class ModelDataLoader<MS extends ModelsSpec> {
     >();
     for (const syncGroup of syncGroups) {
       const models =
-        this.#config.syncGroupDefs.modelsForPartialBootstrap(syncGroup);
+        this.#config.syncGroupDefs.lazyBootstrapModels(syncGroup);
       syncGroupModels.set(syncGroup, models);
       for (const model of models) {
         this.#sendModelLoadingMessage({
