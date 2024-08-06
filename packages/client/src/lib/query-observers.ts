@@ -50,8 +50,8 @@ export class QueryObserver<
       return;
     }
 
-    this.#resultMany = { data: [], isHydrated: false };
-    this.#resultOne = { data: undefined, isHydrated: false };
+    this.#resultMany = { data: this.#resultMany.data, isHydrated: false };
+    this.#resultOne = { data: this.#resultOne.data, isHydrated: false };
 
     this.#listener?.();
   }
