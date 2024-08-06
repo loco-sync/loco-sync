@@ -262,7 +262,7 @@ async function saveBootstrap<MS extends ModelsSpec>(
       const allData = payload[modelName] ?? [];
       await Promise.all(
         allData.map(async (data) => {
-          const objKey = modelObjectKey<MS>({
+          const objKey = modelObjectKey<MS['models']>({
             modelName,
             modelId: data.id,
           });

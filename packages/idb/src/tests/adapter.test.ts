@@ -691,7 +691,7 @@ describe('IdbStorageAdapter.saveLazyBootstrap()', () => {
     await storage.saveEagerBootstrap({}, 1);
 
     const tombstoneModelObjectKeys = new Set([
-      modelObjectKey<MS>({ modelName: 'Post', modelId: '1' }),
+      modelObjectKey<MS['models']>({ modelName: 'Post', modelId: '1' }),
     ]);
 
     await storage.saveLazyBootstrap(

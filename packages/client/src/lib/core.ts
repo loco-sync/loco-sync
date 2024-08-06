@@ -186,11 +186,11 @@ export function createConfig<MS extends ModelsSpec>(
   return config;
 }
 
-export function modelObjectKey<MS extends ModelsSpec>({
+export function modelObjectKey<M extends Models>({
   modelId,
   modelName,
 }: {
-  modelName: keyof MS['models'] & string;
+  modelName: keyof M & string;
   modelId: string;
 }): string {
   return `${modelName}:${modelId}`;

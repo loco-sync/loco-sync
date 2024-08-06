@@ -4,8 +4,9 @@ import type { MS } from '../utils';
 describe('ModelDataStore.processMessage()', () => {
   it('Can edit a field after it is changed in the second sync of payload', () => {
     const store = createModelDataStore<MS['models']>();
-    store.loadBootstrap({
-      Post: [
+    store.setMany(
+      'Post',
+      [
         {
           id: '1',
           title: 'init title',
@@ -13,7 +14,8 @@ describe('ModelDataStore.processMessage()', () => {
           authorId: '1',
         },
       ],
-    });
+      new Set(),
+    );
 
     // Edit title
     store.processMessage({
@@ -311,8 +313,9 @@ describe('ModelDataStore.processMessage()', () => {
 
   it('Delete then insert on entity', () => {
     const store = createModelDataStore<MS['models']>();
-    store.loadBootstrap({
-      Post: [
+    store.setMany(
+      'Post',
+      [
         {
           id: 'P1',
           title: 'init title',
@@ -320,7 +323,8 @@ describe('ModelDataStore.processMessage()', () => {
           authorId: 'A1',
         },
       ],
-    });
+      new Set(),
+    );
 
     store.processMessage({
       type: 'startTransaction',
@@ -387,8 +391,9 @@ describe('ModelDataStore.processMessage()', () => {
 
   it('Sync before commitTransaction with subsequent transaction', () => {
     const store = createModelDataStore<MS['models']>();
-    store.loadBootstrap({
-      Post: [
+    store.setMany(
+      'Post',
+      [
         {
           id: 'P1',
           title: 'init title',
@@ -396,7 +401,8 @@ describe('ModelDataStore.processMessage()', () => {
           authorId: 'A1',
         },
       ],
-    });
+      new Set(),
+    );
 
     store.processMessage({
       type: 'startTransaction',

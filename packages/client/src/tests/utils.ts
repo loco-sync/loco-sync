@@ -141,29 +141,36 @@ export const setup = (opts?: SetupOptions) => {
       ...params: Parameters<NetworkAdapter<MS>[Fn]>
     ): ReturnType<NetworkAdapter<MS>[Fn]> => {
       fnCallCount++;
-      const nextCall = expectedFnCalls.shift();
+      const expectedCall = expectedFnCalls.shift();
       if (verbose) {
         console.log({
-          type: 'network',
-          nextCall,
-          fn,
-          params,
+          expectedCall: expectedCall && {
+            type: expectedCall.type,
+            fn: expectedCall.fn,
+            params: expectedCall.params,
+          },
+          actualCall: {
+            type: 'network',
+            fn,
+            params,
+          },
+          result: expectedCall?.result,
           fnCallCount,
         });
       }
-      if (!nextCall) {
+      if (!expectedCall) {
         throw new Error(
           `Unexpected call to network.${fn}, call #${fnCallCount}`,
         );
       }
-      if (nextCall.type !== 'network' || nextCall.fn !== fn) {
+      if (expectedCall.type !== 'network' || expectedCall.fn !== fn) {
         throw new Error(
-          `Expected ${nextCall.type}.${nextCall.fn}, got network.${fn}, call #${fnCallCount}`,
+          `Expected ${expectedCall.type}.${expectedCall.fn}, got network.${fn}, call #${fnCallCount}`,
         );
       }
-      expect(params).toEqual(nextCall.params);
-      nextCall.onParams?.(...params);
-      return nextCall.result as ReturnType<NetworkAdapter<MS>[Fn]>;
+      expect(params).toEqual(expectedCall.params);
+      expectedCall.onParams?.(...params);
+      return expectedCall.result as ReturnType<NetworkAdapter<MS>[Fn]>;
     };
 
   const network: NetworkAdapter<MS> = {
@@ -179,30 +186,37 @@ export const setup = (opts?: SetupOptions) => {
       ...params: Parameters<StorageAdapter<MS>[Fn]>
     ): ReturnType<StorageAdapter<MS>[Fn]> => {
       fnCallCount++;
-      const nextCall = expectedFnCalls.shift();
+      const expectedCall = expectedFnCalls.shift();
       if (verbose) {
         console.log({
-          type: 'storage',
-          nextCall,
-          fn,
-          params,
+          expectedCall: expectedCall && {
+            type: expectedCall.type,
+            fn: expectedCall.fn,
+            params: expectedCall.params,
+          },
+          actualCall: {
+            type: 'storage',
+            fn,
+            params,
+          },
+          result: expectedCall?.result,
           fnCallCount,
         });
       }
-      if (!nextCall) {
+      if (!expectedCall) {
         throw new Error(
           `Unexpected call to storage.${fn}, call #${fnCallCount}`,
         );
       }
-      if (nextCall.type !== 'storage' || nextCall.fn !== fn) {
+      if (expectedCall.type !== 'storage' || expectedCall.fn !== fn) {
         throw new Error(
-          `Expected ${nextCall.type}.${nextCall.fn}, got storage.${fn}, call #${fnCallCount}`,
+          `Expected ${expectedCall.type}.${expectedCall.fn}, got storage.${fn}, call #${fnCallCount}`,
         );
       }
-      expect(params).toEqual(nextCall.params);
+      expect(params).toEqual(expectedCall.params);
 
-      nextCall.onParams?.(...params);
-      return nextCall.result as ReturnType<StorageAdapter<MS>[Fn]>;
+      expectedCall.onParams?.(...params);
+      return expectedCall.result as ReturnType<StorageAdapter<MS>[Fn]>;
     };
 
   const storage: StorageAdapter<MS> = {

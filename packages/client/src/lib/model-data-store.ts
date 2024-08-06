@@ -1,4 +1,10 @@
-import type { BootstrapPayload, ModelData, ModelFilter, Models } from './core';
+import {
+  modelObjectKey,
+  type ModelData,
+  type ModelFilter,
+  type Models,
+  type SyncAction,
+} from './core';
 import {
   getOptimisticData,
   getStateUpdate,
@@ -34,7 +40,6 @@ export type ModelDataStore<M extends Models> = {
     filter?: ModelFilter<M, ModelName>,
   ) => ModelData<M, ModelName> | undefined;
 
-  loadBootstrap: (payload: BootstrapPayload<M>) => void;
   processMessage: (message: ToProcessMessage<M>) => void;
 
   subscribe: <ModelName extends keyof M & string>(
@@ -46,6 +51,7 @@ export type ModelDataStore<M extends Models> = {
   setMany: <ModelName extends keyof M & string>(
     modelName: ModelName,
     data: ModelData<M, ModelName>[],
+    tombstoneModelObjectKeys: Set<string>,
   ) => void;
 
   /**
@@ -226,46 +232,48 @@ export const createModelDataStore = <M extends Models>(
 
   const setMany = <ModelName extends keyof M & string>(
     modelName: ModelName,
-    data: ModelData<M, ModelName>[],
+    allData: ModelData<M, ModelName>[],
+    tombstoneModelObjectKeys: Set<string>,
   ) => {
     const listeners: Listeners = new Set();
-    for (const d of data) {
-      setData(modelName, d.id, d, undefined, listeners);
+    for (const data of allData) {
+      const modelId = data.id;
+      const key = modelObjectKey<M>({ modelName, modelId });
+      if (tombstoneModelObjectKeys.has(key)) {
+        continue;
+      }
+
+      let modelMap = modelsData.get(modelName);
+      if (!modelMap) {
+        modelMap = new Map();
+        modelsData.set(modelName, modelMap);
+      }
+
+      // Data passed to setMany shouldn't be in the store yet, so skip if it is
+      // There may be some edge cases where we want to allow this
+      // We may also need to treat data from "storage" and data from "lazy bootstrap" differently
+      const prev = modelMap.get(data.id);
+      if (prev) {
+        continue;
+      }
+
+      const newOptimisticData = getOptimisticData(data, undefined);
+      modelMap.set(modelId, {
+        confirmedData: data,
+        changeSnapshots: undefined,
+        optimisticData: newOptimisticData,
+      });
+      addListenersForModel(
+        listeners,
+        modelName,
+        modelId,
+        undefined,
+        newOptimisticData,
+      );
     }
     for (const listener of listeners) {
       listener();
     }
-  };
-
-  const loadBootstrap = (payload: BootstrapPayload<M>) => {
-    if (modelsData.size !== 0) {
-      console.error('Cannot loadBootstrap if store is not empty');
-      return;
-    }
-
-    for (const key in payload) {
-      const modelName: keyof M & string = key;
-      const modelPayload = payload[modelName];
-      if (!modelPayload) {
-        continue;
-      }
-
-      modelsData.set(
-        modelName,
-        new Map(
-          modelPayload.map((p) => [
-            p.id,
-            {
-              confirmedData: p,
-              changeSnapshots: undefined,
-              optimisticData: p,
-            },
-          ]),
-        ),
-      );
-    }
-
-    notifyAllListeners();
   };
 
   const processMessage = (message: ToProcessMessage<M>) => {
@@ -387,20 +395,6 @@ export const createModelDataStore = <M extends Models>(
     }
   };
 
-  const notifyAllListeners = () => {
-    const listeners: Listeners = new Set();
-
-    for (const filterListeners of allModelNameListeners.values()) {
-      for (const { listener } of filterListeners.values()) {
-        listeners.add(listener);
-      }
-    }
-
-    for (const listener of listeners) {
-      listener();
-    }
-  };
-
   const getModelNameId = <ModelName extends keyof M & string>(
     modelName: ModelName,
     modelId: ModelId,
@@ -428,7 +422,6 @@ export const createModelDataStore = <M extends Models>(
     getMany,
     setMany,
     processMessage,
-    loadBootstrap,
     subscribe,
     listenerCount,
     logModelsData,

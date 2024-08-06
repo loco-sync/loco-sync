@@ -82,14 +82,18 @@ export class LocoSyncClient<MS extends ModelsSpec> {
 
     this.#cache = new ModelDataCache(
       (...params) => this.addListener(...params),
-      (...params) => this.loadModelData(...params),
+      (...params) => this.#storage.loadModelData(...params),
       this.#config,
+      this.#tombstoneModelObjectKeys,
       opts.storeOptions,
     );
     this.#loader = new ModelDataLoader(
       this.#config,
       this.#network,
       this.#storage,
+      (message) => {
+        this.#cache.processMessage(message);
+      },
     );
   }
 
@@ -359,21 +363,5 @@ export class LocoSyncClient<MS extends ModelsSpec> {
     if (this.#pendingTransactionQueue.length > 0) {
       this.pushFromQueue();
     }
-  }
-
-  async loadModelData<ModelName extends keyof MS['models'] & string>(
-    modelName: ModelName,
-    args:
-      | {
-          index: ModelIndex<MS['models'], ModelName>;
-          filter: ModelFilter<MS['models'], ModelName>;
-        }
-      | undefined,
-  ): Promise<ModelData<MS['models'], ModelName>[]> {
-    const loadResult = this.#loader.isModelLoaded(modelName);
-    if (!loadResult.loaded) {
-      await loadResult.promise;
-    }
-    return this.#storage.loadModelData(modelName, args);
   }
 }
