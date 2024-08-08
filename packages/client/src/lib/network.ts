@@ -18,7 +18,7 @@ export interface NetworkAdapter<MS extends ModelsSpec> {
 
 type NetworkErrorType = 'auth' | 'network' | 'server';
 
-type SendTransactionResult = Result<{ lastSyncId: number }, NetworkErrorType>;
+export type SendTransactionResult = Result<{ lastSyncId: number }, NetworkErrorType>;
 
 export type DeltaSyncResult<MS extends ModelsSpec> = Result<
   {

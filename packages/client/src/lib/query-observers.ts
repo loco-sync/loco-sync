@@ -10,7 +10,7 @@ export class QueryObserver<
     ModelName
   >,
 > {
-  #listener: (() => void) | undefined;
+  #listeners: Set<() => void>;
   #resultMany: QueryManyResult<MS, ModelName, Selection>;
   #resultOne: QueryOneResult<MS, ModelName, Selection>;
 
@@ -23,6 +23,7 @@ export class QueryObserver<
   ) {
     this.#resultMany = { data: [], isHydrated: false };
     this.#resultOne = { data: undefined, isHydrated: false };
+    this.#listeners = new Set();
   }
 
   setResult(
@@ -32,41 +33,25 @@ export class QueryObserver<
       ModelName,
       Selection
     >[],
+    isHydrated: boolean,
   ) {
     this.#resultMany = {
       data,
-      isHydrated: true,
+      isHydrated,
     };
     this.#resultOne = {
       data: data[0],
-      isHydrated: true,
+      isHydrated,
     };
 
-    this.#listener?.();
-  }
-
-  setNotHydrated() {
-    if (!this.#resultMany.isHydrated && !this.#resultOne.isHydrated) {
-      return;
+    for (const listener of this.#listeners) {
+      listener();
     }
-
-    this.#resultMany = { data: this.#resultMany.data, isHydrated: false };
-    this.#resultOne = { data: this.#resultOne.data, isHydrated: false };
-
-    this.#listener?.();
   }
 
   subscribe(listener: () => void) {
-    if (this.#listener) {
-      throw new Error(
-        'QueryObserver can only be subscribed by one listener at a time.',
-      );
-    }
-
-    this.#listener = listener;
-    return () => {
-      this.#listener = undefined;
-    };
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
   getSnapshotMany(): QueryManyResult<MS, ModelName, Selection> {

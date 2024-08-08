@@ -2,6 +2,7 @@ import { controlledPromise, relationshipDefs, setup, type MS } from '../utils';
 import type {
   BootstrapResult,
   DeltaSyncResult,
+  SendTransactionResult,
   SyncListener,
 } from '../../lib/network';
 import { LocoSyncClient } from '../../lib/client';
@@ -1647,7 +1648,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     const cache = client.getCache();
     const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
     const observerSubscriber = vitest.fn();
-    observer.subscribe(observerSubscriber);
+    observer.subscribe(() => observerSubscriber(observer.getSnapshotMany()));
     const addObserverPromise = cache.addObserver(observer);
     expect(observer.getSnapshotMany()).toEqual({
       data: [],
@@ -1752,20 +1753,24 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await addObserverPromise;
 
-    expect(observer.getSnapshotMany()).toEqual({
-      data: expect.arrayContaining([
+    expect(observerSubscriber.mock.calls).toEqual([
+      [{ data: [], isHydrated: false }],
+      [
         {
-          id: '1',
-          name: 'Group 1',
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+            {
+              id: '2',
+              name: 'Group 2',
+            },
+          ]),
+          isHydrated: true,
         },
-        {
-          id: '2',
-          name: 'Group 2',
-        },
-      ]),
-      isHydrated: true,
-    });
-    expect(observerSubscriber).toHaveBeenCalledTimes(1);
+      ],
+    ]);
   });
 
   test('Sync - sync group bootstrap, data not subscribed to by an observer does not get added to store', async () => {
@@ -1938,7 +1943,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     const cache = client.getCache();
     const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(observerSubscribe);
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
     const addObserverPromise = cache.addObserver(observer);
 
     addNetworkFnCall(
@@ -2018,20 +2023,24 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await addObserverPromise;
 
-    expect(observer.getSnapshotMany()).toEqual({
-      data: expect.arrayContaining([
+    expect(observerSubscribe.mock.calls).toEqual([
+      [{ data: [], isHydrated: false }],
+      [
         {
-          id: '1',
-          name: 'Group 1',
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+            {
+              id: '2',
+              name: 'Group 2',
+            },
+          ]),
+          isHydrated: true,
         },
-        {
-          id: '2',
-          name: 'Group 2',
-        },
-      ]),
-      isHydrated: true,
-    });
-    expect(observerSubscribe).toHaveBeenCalledTimes(1);
+      ],
+    ]);
   });
 
   test('Sync - concurrent loads, lazy bootstrap and data load from storage (storage started first, storage resolved first)', async () => {
@@ -2094,7 +2103,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     const cache = client.getCache();
     const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(observerSubscribe);
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
     const addObserverPromise = cache.addObserver(observer);
 
     addNetworkFnCall(
@@ -2174,20 +2183,24 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await addObserverPromise;
 
-    expect(observer.getSnapshotMany()).toEqual({
-      data: expect.arrayContaining([
+    expect(observerSubscribe.mock.calls).toEqual([
+      [{ data: [], isHydrated: false }],
+      [
         {
-          id: '1',
-          name: 'Group 1',
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+            {
+              id: '2',
+              name: 'Group 2',
+            },
+          ]),
+          isHydrated: true,
         },
-        {
-          id: '2',
-          name: 'Group 2',
-        },
-      ]),
-      isHydrated: true,
-    });
-    expect(observerSubscribe).toHaveBeenCalledTimes(1);
+      ],
+    ]);
   });
 
   test('Sync - concurrent loads, lazy bootstrap and data load from storage (bootstrap started first, bootstrap resolved first)', async () => {
@@ -2278,7 +2291,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     const cache = client.getCache();
     const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(observerSubscribe);
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
     const addObserverPromise = cache.addObserver(observer);
 
     expect(observer.getSnapshotMany()).toEqual({
@@ -2332,20 +2345,24 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await addObserverPromise;
 
-    expect(observer.getSnapshotMany()).toEqual({
-      data: expect.arrayContaining([
+    expect(observerSubscribe.mock.calls).toEqual([
+      [{ data: [], isHydrated: false }],
+      [
         {
-          id: '1',
-          name: 'Group 1',
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+            {
+              id: '2',
+              name: 'Group 2',
+            },
+          ]),
+          isHydrated: true,
         },
-        {
-          id: '2',
-          name: 'Group 2',
-        },
-      ]),
-      isHydrated: true,
-    });
-    expect(observerSubscribe).toHaveBeenCalledTimes(1);
+      ],
+    ]);
   });
 
   test('Sync - concurrent loads, lazy bootstrap and data load from storage (bootstrap started first, storage resolved first)', async () => {
@@ -2436,7 +2453,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     const cache = client.getCache();
     const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(observerSubscribe);
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
     const addObserverPromise = cache.addObserver(observer);
 
     expect(observer.getSnapshotMany()).toEqual({
@@ -2488,20 +2505,24 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await addObserverPromise;
 
-    expect(observer.getSnapshotMany()).toEqual({
-      data: expect.arrayContaining([
+    expect(observerSubscribe.mock.calls).toEqual([
+      [{ data: [], isHydrated: false }],
+      [
         {
-          id: '1',
-          name: 'Group 1',
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+            {
+              id: '2',
+              name: 'Group 2',
+            },
+          ]),
+          isHydrated: true,
         },
-        {
-          id: '2',
-          name: 'Group 2',
-        },
-      ]),
-      isHydrated: true,
-    });
-    expect(observerSubscribe).toHaveBeenCalledTimes(1);
+      ],
+    ]);
   });
 
   test('Sync - sync group bootstrap, dependent observer added after lazy bootstrap started', async () => {
@@ -2591,7 +2612,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     const cache = client.getCache();
     const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
     const observerSubscriber = vitest.fn();
-    observer.subscribe(observerSubscriber);
+    observer.subscribe(() => observerSubscriber(observer.getSnapshotMany()));
     const addObserverPromise = cache.addObserver(observer);
     expect(observer.getSnapshotMany()).toEqual({
       data: [],
@@ -2628,16 +2649,461 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await addObserverPromise;
 
-    expect(observer.getSnapshotMany()).toEqual({
-      data: expect.arrayContaining([
+    expect(observerSubscriber.mock.calls).toEqual([
+      [{ data: [], isHydrated: false }],
+      [
         {
-          id: '1',
-          name: 'Group 1',
+          data: [
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+          ],
+          isHydrated: true,
         },
-      ]),
-      isHydrated: true,
+      ],
+    ]);
+  });
+
+  test('Sync - concurrent lazy bootstrap and storage loads, optimistic change before loads still emitted to observer', async () => {
+    const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
+    const client = new LocoSyncClient({
+      config: {
+        modelDefs: {
+          Group: {},
+          Post: {},
+          PostTag: {},
+          Author: {},
+          PostTagAnnotation: {},
+          Tag: {},
+        },
+        relationshipDefs,
+
+        syncGroupDefs: {
+          lazyBootstrapModels: () => {
+            return ['Group'];
+          },
+          equals: (a, b) => a.type === b.type,
+        },
+      },
+      network,
+      storage,
     });
-    expect(observerSubscriber).toHaveBeenCalledTimes(1);
+
+    addStorageFnCall(
+      'getMetadataAndPendingTransactions',
+      [],
+      Promise.resolve({
+        metadata: {
+          firstSyncId: 0,
+          lastSyncId: 10,
+          syncGroups: [],
+          lastUpdatedAt: '',
+        },
+        pendingTransactions: [],
+      }),
+    );
+
+    let syncListener: SyncListener<MS> | undefined;
+    addNetworkFnCall(
+      'initSync',
+      [expect.any(Function)],
+      Promise.resolve(() => {}),
+      (listener) => {
+        syncListener = listener;
+      },
+    );
+
+    addStorageFnCall(
+      'createPendingTransaction',
+      [
+        [
+          {
+            modelId: '3',
+            modelName: 'Group',
+            action: 'create',
+            data: { id: '3', name: 'Group 3' },
+          },
+        ],
+      ],
+      Promise.resolve(1),
+    );
+
+    addNetworkFnCall(
+      'deltaSync',
+      [10, 100],
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          sync: [],
+        },
+      }),
+    );
+
+    addStorageFnCall('applySyncActions', [100, []], Promise.resolve());
+
+    const sendTransaction = controlledPromise<SendTransactionResult>();
+    addNetworkFnCall(
+      'sendTransaction',
+      [
+        [
+          {
+            modelId: '3',
+            modelName: 'Group',
+            action: 'create',
+            data: { id: '3', name: 'Group 3' },
+          },
+        ],
+      ],
+      sendTransaction.promise,
+    );
+
+    await client.start();
+
+    client.addMutation([
+      {
+        modelId: '3',
+        modelName: 'Group',
+        action: 'create',
+        data: { id: '3', name: 'Group 3' },
+      },
+    ]);
+
+    const lazyBootstrap = controlledPromise<BootstrapResult<MS>>();
+    addNetworkFnCall(
+      'bootstrap',
+      [{ type: 'lazy', syncGroups: [{ type: '1' }], models: ['Group'] }],
+      lazyBootstrap.promise,
+    );
+
+    syncListener!({
+      type: 'handshake',
+      lastSyncId: 100,
+      syncGroups: [{ type: '1' }],
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const storageLoad = controlledPromise<ModelData<MS['models'], 'Group'>[]>();
+    addStorageFnCall(
+      'loadModelData',
+      ['Group', undefined],
+      storageLoad.promise,
+    );
+
+    const cache = client.getCache();
+    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const observerSubscribe = vitest.fn();
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
+    const addObserverPromise = cache.addObserver(observer);
+
+    expect(observer.getSnapshotMany()).toEqual({
+      data: [
+        {
+          id: '3',
+          name: 'Group 3',
+        },
+      ],
+      isHydrated: false,
+    });
+
+    storageLoad.resolve([
+      {
+        id: '2',
+        name: 'Group 2',
+      },
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    addStorageFnCall(
+      'saveLazyBootstrap',
+      [
+        {
+          Group: [{ id: '1', name: 'Group 1' }],
+        },
+        [{ type: '1' }],
+        new Set(),
+      ],
+      Promise.resolve(),
+    );
+
+    lazyBootstrap.resolve({
+      ok: true as const,
+      value: {
+        bootstrap: {
+          Group: [
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+          ],
+        },
+        firstSyncId: 101,
+        syncGroups: [{ type: '1' as const }],
+      },
+    });
+
+    await addObserverPromise;
+
+    expect(observerSubscribe.mock.calls).toEqual([
+      [
+        {
+          data: [
+            {
+              id: '3',
+              name: 'Group 3',
+            },
+          ],
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+            {
+              id: '2',
+              name: 'Group 2',
+            },
+            {
+              id: '3',
+              name: 'Group 3',
+            },
+          ]),
+          isHydrated: true,
+        },
+      ],
+    ]);
+  });
+
+  test('Sync - concurrent lazy bootstrap and storage loads, optimistic change during loads still emitted to observer', async () => {
+    const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
+    const client = new LocoSyncClient({
+      config: {
+        modelDefs: {
+          Group: {},
+          Post: {},
+          PostTag: {},
+          Author: {},
+          PostTagAnnotation: {},
+          Tag: {},
+        },
+        relationshipDefs,
+        syncGroupDefs: {
+          lazyBootstrapModels: () => {
+            return ['Group'];
+          },
+          equals: (a, b) => a.type === b.type,
+        },
+      },
+      network,
+      storage,
+    });
+
+    addStorageFnCall(
+      'getMetadataAndPendingTransactions',
+      [],
+      Promise.resolve({
+        metadata: {
+          firstSyncId: 0,
+          lastSyncId: 10,
+          syncGroups: [],
+          lastUpdatedAt: '',
+        },
+        pendingTransactions: [],
+      }),
+    );
+
+    let syncListener: SyncListener<MS> | undefined;
+    addNetworkFnCall(
+      'initSync',
+      [expect.any(Function)],
+      Promise.resolve(() => {}),
+      (listener) => {
+        syncListener = listener;
+      },
+    );
+
+    addNetworkFnCall(
+      'deltaSync',
+      [10, 100],
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          sync: [],
+        },
+      }),
+    );
+
+    addStorageFnCall('applySyncActions', [100, []], Promise.resolve());
+
+    await client.start();
+
+    const lazyBootstrap = controlledPromise<BootstrapResult<MS>>();
+    addNetworkFnCall(
+      'bootstrap',
+      [{ type: 'lazy', syncGroups: [{ type: '1' }], models: ['Group'] }],
+      lazyBootstrap.promise,
+    );
+
+    syncListener!({
+      type: 'handshake',
+      lastSyncId: 100,
+      syncGroups: [{ type: '1' }],
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const storageLoad = controlledPromise<ModelData<MS['models'], 'Group'>[]>();
+    addStorageFnCall(
+      'loadModelData',
+      ['Group', undefined],
+      storageLoad.promise,
+    );
+
+    const cache = client.getCache();
+    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const observerSubscribe = vitest.fn();
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
+    const addObserverPromise = cache.addObserver(observer);
+
+    expect(observer.getSnapshotMany()).toEqual({
+      data: [],
+      isHydrated: false,
+    });
+
+    addStorageFnCall(
+      'createPendingTransaction',
+      [
+        [
+          {
+            modelId: '3',
+            modelName: 'Group',
+            action: 'create',
+            data: { id: '3', name: 'Group 3' },
+          },
+        ],
+      ],
+      Promise.resolve(1),
+    );
+
+    const sendTransaction = controlledPromise<SendTransactionResult>();
+    addNetworkFnCall(
+      'sendTransaction',
+      [
+        [
+          {
+            modelId: '3',
+            modelName: 'Group',
+            action: 'create',
+            data: { id: '3', name: 'Group 3' },
+          },
+        ],
+      ],
+      // Don't resolve to simulate a long-standing optimistic update
+      sendTransaction.promise,
+    );
+
+    client.addMutation([
+      {
+        modelId: '3',
+        modelName: 'Group',
+        action: 'create',
+        data: { id: '3', name: 'Group 3' },
+      },
+    ]);
+
+    storageLoad.resolve([
+      {
+        id: '2',
+        name: 'Group 2',
+      },
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(observer.getSnapshotMany()).toEqual({
+      data: [
+        {
+          id: '3',
+          name: 'Group 3',
+        },
+      ],
+      isHydrated: false,
+    });
+
+    addStorageFnCall(
+      'saveLazyBootstrap',
+      [
+        {
+          Group: [{ id: '1', name: 'Group 1' }],
+        },
+        [{ type: '1' }],
+        new Set(),
+      ],
+      Promise.resolve(),
+    );
+
+    lazyBootstrap.resolve({
+      ok: true as const,
+      value: {
+        bootstrap: {
+          Group: [
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+          ],
+        },
+        firstSyncId: 101,
+        syncGroups: [{ type: '1' as const }],
+      },
+    });
+
+    await addObserverPromise;
+
+    expect(observerSubscribe.mock.calls).toEqual([
+      [
+        {
+          data: [],
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: [
+            {
+              id: '3',
+              name: 'Group 3',
+            },
+          ],
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              name: 'Group 1',
+            },
+            {
+              id: '2',
+              name: 'Group 2',
+            },
+            {
+              id: '3',
+              name: 'Group 3',
+            },
+          ]),
+          isHydrated: true,
+        },
+      ],
+    ]);
   });
 
   test('Disconnect - requires fresh deltaSync before reconnection', async () => {
@@ -2728,6 +3194,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
       syncGroups: [],
     });
   });
+
+  // TODO: Optimistic change returned via QueryObserver even if data is not loaded
 });
 
 // Error cases

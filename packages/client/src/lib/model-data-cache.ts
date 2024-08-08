@@ -92,7 +92,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
         for (const modelName of modelNames) {
           const modelDef = this.#config.modelDefs[modelName];
           if (modelDef.preloadFromStorage) {
-            this.loadModelDataAsync(modelName, undefined, () => {});
+            this.loadModelDataAsync(modelName, undefined);
           }
         }
       }
@@ -212,48 +212,53 @@ export class ModelDataCache<MS extends ModelsSpec> {
     }
   }
 
-  private loadResultsForObserver(
+  private async loadResultsForObserver(
     observer: AnyQueryObserver<MS>,
-  ): Promise<void> | undefined {
-    const loadedFromStore = this.loadResultsForObserverFromStore(observer);
-    if (loadedFromStore) {
-      return;
-    } else {
-      return this.loadResultsForObserverAsync(observer);
+  ): Promise<void> {
+    const { allDataInStore, data } = this.loadResultsForObserverFromStore(
+      observer,
+    );
+    observer.setResult(data, allDataInStore);
+    if (!allDataInStore) {
+      const { data, isStale } = await this.loadResultsForObserverAsync(
+        observer,
+      );
+      if (!isStale) {
+        observer.setResult(data, true);
+      }
     }
   }
 
   private loadResultsForObserverFromStore(
     observer: AnyQueryObserver<MS>,
-  ): boolean {
+  ): {
+    allDataInStore: boolean;
+    data: ModelResult<MS['models'], MS['relationshipDefs'], any, any>[];
+  } {
     const unsubscribers: (() => void)[] = [];
     const unsubscribe = () => {
-      // Unsubscribe current listeners
       for (const unsubscribe of unsubscribers) {
         unsubscribe();
       }
     };
 
-    const storeListener = () => {
+    const subscribeToStore = () => {
       unsubscribe();
-      this.loadResultsForObserver(observer);
+      void this.loadResultsForObserver(observer);
     };
-
-    const modelData = this.loadModelDataFromStore(
-      observer.modelName,
-      observer.modelFilter,
-    );
-    if (!modelData) {
-      return false;
-    }
 
     unsubscribers.push(
       this.#store.subscribe(
         observer.modelName,
         observer.modelFilter,
-        storeListener,
+        subscribeToStore,
       ),
     );
+    const { inStore, data: modelData } = this.loadModelDataFromStore(
+      observer.modelName,
+      observer.modelFilter,
+    );
+    let allDataInStore = inStore;
 
     const modelResults: ModelResult<
       MS['models'],
@@ -261,71 +266,80 @@ export class ModelDataCache<MS extends ModelsSpec> {
       any,
       any
     >[] = [];
-    let dataNotInStore = false;
     for (const data of modelData) {
       const applyRelationshipsResult = this.applyRelationshipsFromStore(
         observer.modelName,
         data,
         observer.selection,
-        storeListener,
+        subscribeToStore,
+        unsubscribers,
       );
-      unsubscribers.push(...applyRelationshipsResult.unsubscribers);
 
-      if (applyRelationshipsResult.result) {
-        modelResults.push(applyRelationshipsResult.result);
-      } else {
-        dataNotInStore = true;
-        break;
-      }
+      allDataInStore =
+        allDataInStore && applyRelationshipsResult.allDataInStore;
+      modelResults.push(applyRelationshipsResult.result);
     }
 
-    if (dataNotInStore) {
+    if (!allDataInStore) {
       unsubscribe();
-      return false;
     }
 
-    observer.setResult(modelResults);
-    return true;
+    return {
+      allDataInStore,
+      data: modelResults,
+    };
   }
 
-  private async loadResultsForObserverAsync(observer: AnyQueryObserver<MS>) {
-    const storeListener = () => {
-      // Unsubscribe current listeners
-      baseUnsubscriber?.();
-      for (const { unsubscribers } of visitResults ?? []) {
-        for (const unsubscribe of unsubscribers) {
-          unsubscribe();
-        }
+  private async loadResultsForObserverAsync(
+    observer: AnyQueryObserver<MS>,
+  ): Promise<{
+    data: ModelResult<MS['models'], MS['relationshipDefs'], any, any>[];
+    isStale: boolean;
+  }> {
+    const unsubscribers: (() => void)[] = [];
+    let isStale = false;
+    const unsubscribe = () => {
+      isStale = true;
+      for (const unsubscribe of unsubscribers) {
+        unsubscribe();
       }
-
-      // Resubscribe and update results
-      this.loadResultsForObserver(observer);
     };
+    const subscribeToStore = () => {
+      unsubscribe();
+      void this.loadResultsForObserver(observer);
+    };
+
+    unsubscribers.push(
+      this.#store.subscribe(
+        observer.modelName,
+        observer.modelFilter,
+        subscribeToStore,
+      ),
+    );
 
     const modelData = await this.loadModelDataAsync(
       observer.modelName,
       observer.modelFilter,
-      () => observer.setNotHydrated(),
     );
 
-    const baseUnsubscriber = this.#store.subscribe(
-      observer.modelName,
-      observer.modelFilter,
-      storeListener,
-    );
+    // TODO: Maybe early return here if staleResults is true?
+
     const visitResults = await Promise.all(
       modelData.map((data) =>
         this.applyRelationshipsAsync(
           observer.modelName,
           data,
           observer.selection,
-          storeListener,
-          () => observer.setNotHydrated(),
+          subscribeToStore,
+          unsubscribers,
         ),
       ),
     );
 
-    observer.setResult(visitResults.map((r) => r.result));
+    return {
+      data: visitResults.map((r) => r.result),
+      isStale,
+    };
   }
 
   /**
@@ -346,7 +360,6 @@ export class ModelDataCache<MS extends ModelsSpec> {
     modelFilter:
       | ModelFilter<MS['models'], keyof MS['models'] & string>
       | undefined,
-    setNotHydrated: () => void,
   ) {
     const { modelIndex, toLoadFilter } = indexAndFilterForLoad(
       modelName,
@@ -360,7 +373,6 @@ export class ModelDataCache<MS extends ModelsSpec> {
     );
     if (!inStore) {
       if (modelFilterStatus) {
-        setNotHydrated();
         await promiseForAllLoadingListeners(modelFilterStatus);
       } else {
         const newModelFilterStatus: ModelFilterStatus<MS> = {
@@ -386,8 +398,6 @@ export class ModelDataCache<MS extends ModelsSpec> {
         }
 
         this.#modelFilterStatuses.get(modelName)!.push(newModelFilterStatus);
-
-        setNotHydrated();
 
         await this.updateStoreAfterModelFilterStatusLoaded(
           modelName,
@@ -422,22 +432,27 @@ export class ModelDataCache<MS extends ModelsSpec> {
     modelFilterStatus.pendingSync = { lastSyncId: 0, syncActions: [] };
   }
 
-  private loadModelDataFromStore<MS extends ModelsSpec>(
+  private loadModelDataFromStore(
     modelName: keyof MS['models'] & string,
     modelFilter:
       | ModelFilter<MS['models'], keyof MS['models'] & string>
       | undefined,
-  ) {
+  ): {
+    data: ModelData<MS['models'], keyof MS['models'] & string>[];
+    inStore: boolean;
+  } {
     const { toLoadFilter } = indexAndFilterForLoad(
       modelName,
       modelFilter,
       this.#config.indexes,
     );
 
-    if (this.isModelDataInStore(modelName, toLoadFilter).inStore) {
-      return this.#store.getMany(modelName, modelFilter);
-    }
-    return null;
+    const { inStore } = this.isModelDataInStore(modelName, toLoadFilter);
+    const data = this.#store.getMany(modelName, modelFilter);
+    return {
+      inStore,
+      data,
+    };
   }
 
   private isModelDataInStore(
@@ -470,8 +485,8 @@ export class ModelDataCache<MS extends ModelsSpec> {
     modelName: ModelName,
     modelData: ModelData<MS['models'], ModelName>,
     selection: Selection | undefined,
-    storeListener: () => void,
-    setNotHydrated: () => void,
+    subscribeToStore: () => void,
+    unsubscribers: Array<() => void>,
   ): Promise<
     VisitResult<MS['models'], MS['relationshipDefs'], ModelName, Selection>
   > {
@@ -483,11 +498,8 @@ export class ModelDataCache<MS extends ModelsSpec> {
     if (!selection) {
       return {
         result,
-        unsubscribers: [],
       };
     }
-
-    const unsubscribers: Array<() => void> = [];
 
     for (const relKey in selection) {
       const relationshipDef:
@@ -506,17 +518,16 @@ export class ModelDataCache<MS extends ModelsSpec> {
 
       if (relationshipDef.type === 'one') {
         const filter = filterForModelRelationship(relationshipDef, modelData);
-        const referencedModels = await this.loadModelDataAsync(
-          relationshipDef.referencesModelName,
-          filter,
-          setNotHydrated,
-        );
         unsubscribers.push(
           this.#store.subscribe(
             relationshipDef.referencesModelName,
             filter,
-            storeListener,
+            subscribeToStore,
           ),
+        );
+        const referencedModels = await this.loadModelDataAsync(
+          relationshipDef.referencesModelName,
+          filter,
         );
         const oneReferencedModel = referencedModels[0];
 
@@ -531,11 +542,10 @@ export class ModelDataCache<MS extends ModelsSpec> {
             relationshipDef.referencesModelName,
             oneReferencedModel,
             subSelection,
-            storeListener,
-            setNotHydrated,
+            subscribeToStore,
+            unsubscribers,
           );
 
-          unsubscribers.push(...subVisitResult.unsubscribers);
           oneResult = subVisitResult.result;
         } else {
           oneResult = undefined;
@@ -544,17 +554,16 @@ export class ModelDataCache<MS extends ModelsSpec> {
           oneResult as any;
       } else {
         const filter = filterForModelRelationship(relationshipDef, modelData);
-        const referencedModels = await this.loadModelDataAsync(
-          relationshipDef.referencesModelName,
-          filter,
-          setNotHydrated,
-        );
         unsubscribers.push(
           this.#store.subscribe(
             relationshipDef.referencesModelName,
             filter,
-            storeListener,
+            subscribeToStore,
           ),
+        );
+        const referencedModels = await this.loadModelDataAsync(
+          relationshipDef.referencesModelName,
+          filter,
         );
 
         const many: ModelResult<M, R, ReferencedModelName, SubSelection>[] = [];
@@ -566,20 +575,17 @@ export class ModelDataCache<MS extends ModelsSpec> {
             relationshipDef.referencesModelName,
             model,
             subSelection,
-            storeListener,
-            setNotHydrated,
+            subscribeToStore,
+            unsubscribers,
           );
-          if (subVisitResult) {
-            unsubscribers.push(...subVisitResult.unsubscribers);
-            many.push(subVisitResult.result);
-          }
+          many.push(subVisitResult.result);
         }
         result[relKey as keyof ModelResult<M, R, ModelName, Selection>] =
           many as any;
       }
     }
 
-    return { result, unsubscribers };
+    return { result };
   }
 
   private applyRelationshipsFromStore<
@@ -593,7 +599,8 @@ export class ModelDataCache<MS extends ModelsSpec> {
     modelName: ModelName,
     modelData: ModelData<MS['models'], ModelName>,
     selection: Selection | undefined,
-    storeListener: () => void,
+    subscribeToStore: () => void,
+    unsubscribers: Array<() => void>,
   ): VisitResultFromStore<
     MS['models'],
     MS['relationshipDefs'],
@@ -604,15 +611,14 @@ export class ModelDataCache<MS extends ModelsSpec> {
     type R = MS['relationshipDefs'];
 
     const result = { ...modelData } as ModelResult<M, R, ModelName, Selection>;
+    let allDataInStore = true;
 
     if (!selection) {
       return {
+        allDataInStore,
         result,
-        unsubscribers: [],
       };
     }
-
-    const unsubscribers: Array<() => void> = [];
 
     for (const relKey in selection) {
       const relationshipDef:
@@ -631,21 +637,18 @@ export class ModelDataCache<MS extends ModelsSpec> {
 
       if (relationshipDef.type === 'one') {
         const filter = filterForModelRelationship(relationshipDef, modelData);
-        const referencedModels = this.loadModelDataFromStore(
-          relationshipDef.referencesModelName,
-          filter,
-        );
-        if (!referencedModels) {
-          return { result: null, unsubscribers };
-        }
-
         unsubscribers.push(
           this.#store.subscribe(
             relationshipDef.referencesModelName,
             filter,
-            storeListener,
+            subscribeToStore,
           ),
         );
+        const { inStore, data: referencedModels } = this.loadModelDataFromStore(
+          relationshipDef.referencesModelName,
+          filter,
+        );
+        allDataInStore = allDataInStore && inStore;
         const oneReferencedModel = referencedModels[0];
 
         let oneResult:
@@ -659,12 +662,10 @@ export class ModelDataCache<MS extends ModelsSpec> {
             relationshipDef.referencesModelName,
             oneReferencedModel,
             subSelection,
-            storeListener,
+            subscribeToStore,
+            unsubscribers,
           );
-          unsubscribers.push(...subVisitResult.unsubscribers);
-          if (!subVisitResult.result) {
-            return { result: null, unsubscribers };
-          }
+          allDataInStore = allDataInStore && subVisitResult.allDataInStore;
           oneResult = subVisitResult.result;
         } else {
           oneResult = undefined;
@@ -673,21 +674,18 @@ export class ModelDataCache<MS extends ModelsSpec> {
           oneResult as any;
       } else {
         const filter = filterForModelRelationship(relationshipDef, modelData);
-        const referencedModels = this.loadModelDataFromStore(
-          relationshipDef.referencesModelName,
-          filter,
-        );
-        if (!referencedModels) {
-          return { result: null, unsubscribers };
-        }
-
         unsubscribers.push(
           this.#store.subscribe(
             relationshipDef.referencesModelName,
             filter,
-            storeListener,
+            subscribeToStore,
           ),
         );
+        const { inStore, data: referencedModels } = this.loadModelDataFromStore(
+          relationshipDef.referencesModelName,
+          filter,
+        );
+        allDataInStore = allDataInStore && inStore;
 
         const many: ModelResult<M, R, ReferencedModelName, SubSelection>[] = [];
         for (const model of referencedModels) {
@@ -698,13 +696,10 @@ export class ModelDataCache<MS extends ModelsSpec> {
             relationshipDef.referencesModelName,
             model,
             subSelection,
-            storeListener,
+            subscribeToStore,
+            unsubscribers,
           );
-          unsubscribers.push(...subVisitResult.unsubscribers);
-          if (!subVisitResult.result) {
-            return { result: null, unsubscribers };
-          }
-
+          allDataInStore = allDataInStore && subVisitResult.allDataInStore;
           many.push(subVisitResult.result);
         }
         result[relKey as keyof ModelResult<M, R, ModelName, Selection>] =
@@ -712,7 +707,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
       }
     }
 
-    return { result, unsubscribers };
+    return { result, allDataInStore };
   }
 }
 
@@ -765,7 +760,6 @@ type VisitResult<
   Selection extends ModelRelationshipSelection<M, R, ModelName>,
 > = {
   result: ModelResult<M, R, ModelName, Selection>;
-  unsubscribers: Array<() => void>;
 };
 
 type VisitResultFromStore<
@@ -774,8 +768,8 @@ type VisitResultFromStore<
   ModelName extends keyof M & string,
   Selection extends ModelRelationshipSelection<M, R, ModelName>,
 > = {
-  result: ModelResult<M, R, ModelName, Selection> | null;
-  unsubscribers: Array<() => void>;
+  result: ModelResult<M, R, ModelName, Selection>;
+  allDataInStore: boolean;
 };
 
 function indexAndFilterForLoad<MS extends ModelsSpec>(
