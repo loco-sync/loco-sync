@@ -101,8 +101,7 @@ export class ModelDataLoader<MS extends ModelsSpec> {
       Array<keyof MS['models'] & string>
     >();
     for (const syncGroup of syncGroups) {
-      const models =
-        this.#config.syncGroupDefs.lazyBootstrapModels(syncGroup);
+      const models = this.#config.syncGroupDefs.lazyBootstrapModels(syncGroup);
       syncGroupModels.set(syncGroup, models);
       for (const model of models) {
         this.#sendModelLoadingMessage({
