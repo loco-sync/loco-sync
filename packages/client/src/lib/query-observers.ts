@@ -1,5 +1,6 @@
-import type { ModelFilter, ModelsSpec } from './core';
+import type { ModelsSpec } from './core';
 import type { ModelRelationshipSelection, ModelResult } from './relationships';
+import type { ModelFilter } from './filters';
 
 export class QueryObserver<
   MS extends ModelsSpec,

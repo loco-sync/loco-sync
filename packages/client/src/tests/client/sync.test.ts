@@ -9,6 +9,8 @@ import { LocoSyncClient } from '../../lib/client';
 import { QueryObserver } from '../../lib/query-observers';
 import { modelObjectKey, type ModelData } from '../../lib/core';
 import { vitest } from 'vitest';
+import { inArray, type ModelFilter } from '../../lib/filters';
+import { type ModelIndex } from '../../lib/indexes';
 
 describe('LocoSyncClient, network.initSync() handler', () => {
   test('Handshake - issues deltaSync', async () => {
@@ -3098,6 +3100,751 @@ describe('LocoSyncClient, network.initSync() handler', () => {
             {
               id: '3',
               name: 'Group 3',
+            },
+          ]),
+          isHydrated: true,
+        },
+      ],
+    ]);
+  });
+
+  test('Sync - call to loadModelData based on filter / index, basic case', async () => {
+    const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
+    const client = new LocoSyncClient({
+      config: {
+        modelDefs: {
+          Group: {},
+          Post: {},
+          PostTag: {},
+          Author: {},
+          PostTagAnnotation: {},
+          Tag: {},
+        },
+        relationshipDefs,
+        indexes: {
+          Post: [
+            {
+              name: 'Post_authorId',
+              fields: ['authorId'],
+            },
+          ],
+        },
+      },
+      network,
+      storage,
+    });
+
+    addStorageFnCall(
+      'getMetadataAndPendingTransactions',
+      [],
+      Promise.resolve({
+        metadata: {
+          firstSyncId: 0,
+          lastSyncId: 10,
+          syncGroups: [],
+          lastUpdatedAt: '',
+        },
+        pendingTransactions: [],
+      }),
+    );
+
+    let syncListener: SyncListener<MS> | undefined;
+    addNetworkFnCall(
+      'initSync',
+      [expect.any(Function)],
+      Promise.resolve(() => {}),
+      (listener) => {
+        syncListener = listener;
+      },
+    );
+
+    await client.start();
+
+    addNetworkFnCall(
+      'deltaSync',
+      [10, 100],
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          sync: [],
+        },
+      }),
+    );
+
+    addStorageFnCall(
+      'loadModelData',
+      [
+        'Post',
+        {
+          index: { name: 'Post_authorId', fields: ['authorId'] } as ModelIndex<
+            MS['models'],
+            'Post'
+          >,
+          filter: { authorId: '1' } as ModelFilter<MS['models'], 'Post'>,
+        },
+      ],
+      Promise.resolve([
+        {
+          id: '1',
+          title: 'title',
+          body: 'body',
+          authorId: '1',
+        },
+      ]),
+    );
+
+    addStorageFnCall('applySyncActions', [100, []], Promise.resolve());
+
+    syncListener!({
+      type: 'handshake',
+      lastSyncId: 100,
+      syncGroups: [],
+    });
+
+    const cache = client.getCache();
+    const observer = new QueryObserver<MS, 'Post', {}>(
+      'Post',
+      { authorId: '1' },
+      {},
+    );
+    const observerSubscribe = vitest.fn();
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
+    await cache.addObserver(observer);
+
+    expect(observerSubscribe.mock.calls).toEqual([
+      [
+        {
+          data: [],
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: [
+            {
+              id: '1',
+              title: 'title',
+              body: 'body',
+              authorId: '1',
+            },
+          ],
+          isHydrated: true,
+        },
+      ],
+    ]);
+  });
+
+  test('Sync - call to loadModelData based on filter / index, inArray case', async () => {
+    const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
+    const client = new LocoSyncClient({
+      config: {
+        modelDefs: {
+          Group: {},
+          Post: {},
+          PostTag: {},
+          Author: {},
+          PostTagAnnotation: {},
+          Tag: {},
+        },
+        relationshipDefs,
+        indexes: {
+          Post: [
+            {
+              name: 'Post_authorId',
+              fields: ['authorId'],
+            },
+          ],
+        },
+      },
+      network,
+      storage,
+    });
+
+    addStorageFnCall(
+      'getMetadataAndPendingTransactions',
+      [],
+      Promise.resolve({
+        metadata: {
+          firstSyncId: 0,
+          lastSyncId: 10,
+          syncGroups: [],
+          lastUpdatedAt: '',
+        },
+        pendingTransactions: [],
+      }),
+    );
+
+    let syncListener: SyncListener<MS> | undefined;
+    addNetworkFnCall(
+      'initSync',
+      [expect.any(Function)],
+      Promise.resolve(() => {}),
+      (listener) => {
+        syncListener = listener;
+      },
+    );
+
+    await client.start();
+
+    addNetworkFnCall(
+      'deltaSync',
+      [10, 100],
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          sync: [],
+        },
+      }),
+    );
+
+    addStorageFnCall(
+      'loadModelData',
+      [
+        'Post',
+        {
+          index: { name: 'Post_authorId', fields: ['authorId'] } as ModelIndex<
+            MS['models'],
+            'Post'
+          >,
+          filter: { authorId: '1' } as ModelFilter<MS['models'], 'Post'>,
+        },
+      ],
+      Promise.resolve([
+        {
+          id: '1',
+          title: 'title',
+          body: 'body',
+          authorId: '1',
+        },
+      ]),
+    );
+
+    addStorageFnCall(
+      'loadModelData',
+      [
+        'Post',
+        {
+          index: { name: 'Post_authorId', fields: ['authorId'] } as ModelIndex<
+            MS['models'],
+            'Post'
+          >,
+          filter: { authorId: '2' } as ModelFilter<MS['models'], 'Post'>,
+        },
+      ],
+      Promise.resolve([
+        {
+          id: '2',
+          title: 'title',
+          body: 'body',
+          authorId: '2',
+        },
+      ]),
+    );
+
+    addStorageFnCall('applySyncActions', [100, []], Promise.resolve());
+
+    syncListener!({
+      type: 'handshake',
+      lastSyncId: 100,
+      syncGroups: [],
+    });
+
+    const cache = client.getCache();
+    const observer = new QueryObserver<MS, 'Post', {}>(
+      'Post',
+      { authorId: inArray(['1', '2']) },
+      {},
+    );
+    const observerSubscribe = vitest.fn();
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
+    await cache.addObserver(observer);
+
+    expect(observerSubscribe.mock.calls).toEqual([
+      [
+        {
+          data: [],
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              title: 'title',
+              body: 'body',
+              authorId: '1',
+            },
+          ]),
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              title: 'title',
+              body: 'body',
+              authorId: '1',
+            },
+            {
+              id: '2',
+              title: 'title',
+              body: 'body',
+              authorId: '2',
+            },
+          ]),
+          isHydrated: true,
+        },
+      ],
+    ]);
+  });
+
+  test('Sync - call to loadModelData based on filter / index, combo inArray/literal case', async () => {
+    const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
+    const client = new LocoSyncClient({
+      config: {
+        modelDefs: {
+          Group: {},
+          Post: {},
+          PostTag: {},
+          Author: {},
+          PostTagAnnotation: {},
+          Tag: {},
+        },
+        relationshipDefs,
+        indexes: {
+          Post: [
+            {
+              name: 'Post_index',
+              fields: ['authorId', 'title'],
+            },
+          ],
+        },
+      },
+      network,
+      storage,
+    });
+
+    addStorageFnCall(
+      'getMetadataAndPendingTransactions',
+      [],
+      Promise.resolve({
+        metadata: {
+          firstSyncId: 0,
+          lastSyncId: 10,
+          syncGroups: [],
+          lastUpdatedAt: '',
+        },
+        pendingTransactions: [],
+      }),
+    );
+
+    let syncListener: SyncListener<MS> | undefined;
+    addNetworkFnCall(
+      'initSync',
+      [expect.any(Function)],
+      Promise.resolve(() => {}),
+      (listener) => {
+        syncListener = listener;
+      },
+    );
+
+    await client.start();
+
+    addNetworkFnCall(
+      'deltaSync',
+      [10, 100],
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          sync: [],
+        },
+      }),
+    );
+
+    addStorageFnCall(
+      'loadModelData',
+      [
+        'Post',
+        {
+          index: {
+            name: 'Post_index',
+            fields: ['authorId', 'title'],
+          } as ModelIndex<MS['models'], 'Post'>,
+          filter: { authorId: '1', title: 'title' } as ModelFilter<
+            MS['models'],
+            'Post'
+          >,
+        },
+      ],
+      Promise.resolve([
+        {
+          id: '1',
+          title: 'title',
+          body: 'body',
+          authorId: '1',
+        },
+      ]),
+    );
+
+    addStorageFnCall(
+      'loadModelData',
+      [
+        'Post',
+        {
+          index: {
+            name: 'Post_index',
+            fields: ['authorId', 'title'],
+          } as ModelIndex<MS['models'], 'Post'>,
+          filter: { authorId: '2', title: 'title' } as ModelFilter<
+            MS['models'],
+            'Post'
+          >,
+        },
+      ],
+      Promise.resolve([
+        {
+          id: '2',
+          title: 'title',
+          body: 'body',
+          authorId: '2',
+        },
+      ]),
+    );
+
+    addStorageFnCall('applySyncActions', [100, []], Promise.resolve());
+
+    syncListener!({
+      type: 'handshake',
+      lastSyncId: 100,
+      syncGroups: [],
+    });
+
+    const cache = client.getCache();
+    const observer = new QueryObserver<MS, 'Post', {}>(
+      'Post',
+      { authorId: inArray(['1', '2']), title: 'title' },
+      {},
+    );
+    const observerSubscribe = vitest.fn();
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
+    await cache.addObserver(observer);
+
+    expect(observerSubscribe.mock.calls).toEqual([
+      [
+        {
+          data: [],
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: [
+            {
+              id: '1',
+              title: 'title',
+              body: 'body',
+              authorId: '1',
+            },
+          ],
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              title: 'title',
+              body: 'body',
+              authorId: '1',
+            },
+            {
+              id: '2',
+              title: 'title',
+              body: 'body',
+              authorId: '2',
+            },
+          ]),
+          isHydrated: true,
+        },
+      ],
+    ]);
+  });
+
+  test('Sync - call to loadModelData based on filter / index, multiple inArray case', async () => {
+    const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
+    const client = new LocoSyncClient({
+      config: {
+        modelDefs: {
+          Group: {},
+          Post: {},
+          PostTag: {},
+          Author: {},
+          PostTagAnnotation: {},
+          Tag: {},
+        },
+        relationshipDefs,
+        indexes: {
+          Post: [
+            {
+              name: 'Post_index',
+              fields: ['authorId', 'title'],
+            },
+          ],
+        },
+      },
+      network,
+      storage,
+    });
+
+    addStorageFnCall(
+      'getMetadataAndPendingTransactions',
+      [],
+      Promise.resolve({
+        metadata: {
+          firstSyncId: 0,
+          lastSyncId: 10,
+          syncGroups: [],
+          lastUpdatedAt: '',
+        },
+        pendingTransactions: [],
+      }),
+    );
+
+    let syncListener: SyncListener<MS> | undefined;
+    addNetworkFnCall(
+      'initSync',
+      [expect.any(Function)],
+      Promise.resolve(() => {}),
+      (listener) => {
+        syncListener = listener;
+      },
+    );
+
+    await client.start();
+
+    addNetworkFnCall(
+      'deltaSync',
+      [10, 100],
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          sync: [],
+        },
+      }),
+    );
+
+    addStorageFnCall(
+      'loadModelData',
+      [
+        'Post',
+        {
+          index: {
+            name: 'Post_index',
+            fields: ['authorId', 'title'],
+          } as ModelIndex<MS['models'], 'Post'>,
+          filter: { authorId: '1', title: 'title 1' } as ModelFilter<
+            MS['models'],
+            'Post'
+          >,
+        },
+      ],
+      Promise.resolve([
+        {
+          id: '1',
+          title: 'title 1',
+          body: 'body',
+          authorId: '1',
+        },
+      ]),
+    );
+
+    addStorageFnCall(
+      'loadModelData',
+      [
+        'Post',
+        {
+          index: {
+            name: 'Post_index',
+            fields: ['authorId', 'title'],
+          } as ModelIndex<MS['models'], 'Post'>,
+          filter: { authorId: '1', title: 'title 2' } as ModelFilter<
+            MS['models'],
+            'Post'
+          >,
+        },
+      ],
+      Promise.resolve([
+        {
+          id: '2',
+          title: 'title 2',
+          body: 'body',
+          authorId: '1',
+        },
+      ]),
+    );
+
+    addStorageFnCall(
+      'loadModelData',
+      [
+        'Post',
+        {
+          index: {
+            name: 'Post_index',
+            fields: ['authorId', 'title'],
+          } as ModelIndex<MS['models'], 'Post'>,
+          filter: { authorId: '2', title: 'title 1' } as ModelFilter<
+            MS['models'],
+            'Post'
+          >,
+        },
+      ],
+      Promise.resolve([
+        {
+          id: '3',
+          title: 'title 1',
+          body: 'body',
+          authorId: '2',
+        },
+      ]),
+    );
+
+    addStorageFnCall(
+      'loadModelData',
+      [
+        'Post',
+        {
+          index: {
+            name: 'Post_index',
+            fields: ['authorId', 'title'],
+          } as ModelIndex<MS['models'], 'Post'>,
+          filter: { authorId: '2', title: 'title 2' } as ModelFilter<
+            MS['models'],
+            'Post'
+          >,
+        },
+      ],
+      Promise.resolve([
+        {
+          id: '4',
+          title: 'title 2',
+          body: 'body',
+          authorId: '2',
+        },
+      ]),
+    );
+
+    addStorageFnCall('applySyncActions', [100, []], Promise.resolve());
+
+    syncListener!({
+      type: 'handshake',
+      lastSyncId: 100,
+      syncGroups: [],
+    });
+
+    const cache = client.getCache();
+    const observer = new QueryObserver<MS, 'Post', {}>(
+      'Post',
+      { authorId: inArray(['1', '2']), title: inArray(['title 1', 'title 2']) },
+      {},
+    );
+    const observerSubscribe = vitest.fn();
+    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
+    await cache.addObserver(observer);
+
+    expect(observerSubscribe.mock.calls).toEqual([
+      [
+        {
+          data: [],
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: [
+            {
+              id: '1',
+              title: 'title 1',
+              body: 'body',
+              authorId: '1',
+            },
+          ],
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              title: 'title 1',
+              body: 'body',
+              authorId: '1',
+            },
+            {
+              id: '2',
+              title: 'title 2',
+              body: 'body',
+              authorId: '1',
+            },
+          ]),
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              title: 'title 1',
+              body: 'body',
+              authorId: '1',
+            },
+            {
+              id: '2',
+              title: 'title 2',
+              body: 'body',
+              authorId: '1',
+            },
+            {
+              id: '3',
+              title: 'title 1',
+              body: 'body',
+              authorId: '2',
+            },
+          ]),
+          isHydrated: false,
+        },
+      ],
+      [
+        {
+          data: expect.arrayContaining([
+            {
+              id: '1',
+              title: 'title 1',
+              body: 'body',
+              authorId: '1',
+            },
+            {
+              id: '2',
+              title: 'title 2',
+              body: 'body',
+              authorId: '1',
+            },
+            {
+              id: '3',
+              title: 'title 1',
+              body: 'body',
+              authorId: '2',
+            },
+            {
+              id: '4',
+              title: 'title 2',
+              body: 'body',
+              authorId: '2',
             },
           ]),
           isHydrated: true,

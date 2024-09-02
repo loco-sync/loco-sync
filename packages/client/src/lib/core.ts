@@ -1,5 +1,6 @@
 import type { ModelsRelationshipDefs } from './relationships';
 import type { ModelsIndexes } from './indexes';
+import type { ModelFilter } from './filters';
 
 export type ModelsSpec<
   M extends Models = {},
@@ -86,14 +87,6 @@ export type ModelField<
   M extends Models,
   ModelName extends keyof M & string,
 > = keyof ModelData<M, ModelName> & string;
-
-// TODO: Non-trivial filtering?
-export type ModelFilter<
-  M extends Models,
-  ModelName extends keyof M & string,
-> = {
-  [K in ModelField<M, ModelName>]?: ModelData<M, ModelName>[K];
-};
 
 export type LocalChanges<M extends Models> = ReadonlyArray<
   {

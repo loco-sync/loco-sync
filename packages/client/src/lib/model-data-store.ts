@@ -1,10 +1,5 @@
-import {
-  modelObjectKey,
-  type ModelData,
-  type ModelFilter,
-  type Models,
-  type SyncAction,
-} from './core';
+import { modelObjectKey, type ModelData, type Models } from './core';
+import { dataPassesFilter, type ModelFilter } from './filters';
 import {
   getOptimisticData,
   getStateUpdate,
@@ -426,20 +421,4 @@ export const createModelDataStore = <M extends Models>(
     listenerCount,
     logModelsData,
   };
-};
-
-export const dataPassesFilter = <
-  M extends Models,
-  ModelName extends keyof M & string,
->(
-  data: ModelData<M, ModelName>,
-  filter: ModelFilter<M, ModelName>,
-): boolean => {
-  for (const filterKey in filter) {
-    const filterValue = filter[filterKey];
-    if (data[filterKey] !== filterValue) {
-      return false;
-    }
-  }
-  return true;
 };

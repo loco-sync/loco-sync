@@ -1,4 +1,9 @@
-import type { ModelField, ModelFilter, Models } from './core';
+import type { ModelField, Models } from './core';
+import {
+  InArrayFilter,
+  type LiteralModelFilter,
+  type ModelFilter,
+} from './filters';
 
 export type ModelsIndexes<M extends Models> = {
   [ModelName in keyof M & string]?: ModelIndex<M, ModelName>[];
@@ -9,7 +14,29 @@ export type ModelIndex<M extends Models, ModelName extends keyof M & string> = {
   fields: ModelField<M, ModelName>[];
 };
 
-export function findIndexForFilter<
+export type ModelIndexValues<
+  M extends Models,
+  ModelName extends keyof M & string,
+> = {
+  index: ModelIndex<M, ModelName>;
+  values: LiteralModelFilter<M, ModelName>[];
+};
+
+export type EmptyModelIndexValues<
+  M extends Models,
+  ModelName extends keyof M & string,
+> = {
+  index: undefined;
+  // This is important, since it will cause downstream code to load all of the data because no index was found
+  values: [{}];
+};
+
+export type MaybeModelIndexValues<
+  M extends Models,
+  ModelName extends keyof M & string,
+> = ModelIndexValues<M, ModelName> | EmptyModelIndexValues<M, ModelName>;
+
+function findIndexForFilter<
   M extends Models,
   ModelName extends keyof M & string,
 >(
@@ -30,16 +57,81 @@ export function findIndexForFilter<
   return;
 }
 
-export function narrowFilterForIndex<
+function modelIndexValuesFromFilter<
   M extends Models,
   ModelName extends keyof M & string,
 >(
   index: ModelIndex<M, ModelName>,
   filter: ModelFilter<M, ModelName>,
-): ModelFilter<M, ModelName> {
-  const result: ModelFilter<M, ModelName> = {};
+): ModelIndexValues<M, ModelName> | undefined {
+  let modelIndexValuesFilters: LiteralModelFilter<M, ModelName>[] | undefined =
+    undefined;
   for (const field of index.fields) {
-    result[field] = filter[field] as ModelFilter<M, ModelName>[typeof field];
+    const filterValue = filter[field];
+    if (filterValue instanceof InArrayFilter) {
+      const inArrayFilterValue = filterValue as InArrayFilter<
+        M,
+        ModelName,
+        typeof field
+      >;
+      if (modelIndexValuesFilters) {
+        modelIndexValuesFilters = modelIndexValuesFilters.flatMap(
+          (existingValue) =>
+            inArrayFilterValue.values.map((inArrayValue) => ({
+              ...existingValue,
+              [field]: inArrayValue,
+            })),
+        );
+      } else {
+        modelIndexValuesFilters = inArrayFilterValue.values.map(
+          (inArrayValue) =>
+            ({
+              [field]: inArrayValue,
+            }) as LiteralModelFilter<M, ModelName>,
+        );
+      }
+    } else {
+      if (modelIndexValuesFilters) {
+        modelIndexValuesFilters = modelIndexValuesFilters.map((value) => ({
+          ...value,
+          [field]: filterValue,
+        }));
+      } else {
+        modelIndexValuesFilters = [
+          { [field]: filterValue } as LiteralModelFilter<M, ModelName>,
+        ];
+      }
+    }
   }
-  return result;
+
+  return (
+    modelIndexValuesFilters && {
+      index,
+      values: modelIndexValuesFilters,
+    }
+  );
+}
+
+export function indexAndFilterForLoad<
+  M extends Models,
+  ModelName extends keyof M & string,
+>(
+  modelName: ModelName,
+  modelFilter: ModelFilter<M, ModelName> | undefined,
+  indexes: ModelsIndexes<M> | undefined,
+): MaybeModelIndexValues<M, ModelName> {
+  if (modelFilter) {
+    const index = findIndexForFilter(indexes?.[modelName] ?? [], modelFilter);
+    if (index) {
+      const result = modelIndexValuesFromFilter(index, modelFilter);
+      if (result) {
+        return result;
+      }
+    }
+  }
+
+  return {
+    index: undefined,
+    values: [{}],
+  };
 }

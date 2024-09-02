@@ -84,7 +84,7 @@ type RollbackTransactionMessage = {
   type: 'rollbackTransaction';
   transactionId: number;
 };
-type SyncCatchUpMessage<M extends Models> = {
+export type SyncCatchUpMessage<M extends Models> = {
   type: 'syncCatchUp';
   lastSyncId: number;
   sync: SyncAction<M, keyof M & string>[];

@@ -2,21 +2,19 @@ import type { LocoSyncClient } from './client';
 import {
   type ModelData,
   type ModelField,
-  type ModelFilter,
   type Models,
   type ModelsConfig,
   type ModelsSpec,
   type SyncAction,
 } from './core';
+import { indexAndFilterForLoad } from './indexes';
 import {
-  findIndexForFilter,
-  narrowFilterForIndex,
-  type ModelIndex,
-  type ModelsIndexes,
-} from './indexes';
+  dataPassesFilter,
+  type LiteralModelFilter,
+  type ModelFilter,
+} from './filters';
 import {
   createModelDataStore,
-  dataPassesFilter,
   type CreateModelDataStoreOptions,
   type ModelDataStore,
 } from './model-data-store';
@@ -28,7 +26,7 @@ import type {
   ModelsRelationshipDefs,
 } from './relationships';
 import type { StorageAdapter } from './storage';
-import type { ToProcessMessage } from './transactionUtils';
+import type { SyncCatchUpMessage, ToProcessMessage } from './transactionUtils';
 
 type AnyQueryObserver<MS extends ModelsSpec> = QueryObserver<MS, any, any>;
 
@@ -127,16 +125,14 @@ export class ModelDataCache<MS extends ModelsSpec> {
         if (syncAction.action === 'insert' || syncAction.action === 'update') {
           const modelFilterStatus = this.#modelFilterStatuses
             .get(syncAction.modelName)!
-            .find(({ filter }) => dataPassesFilter(syncAction.data, filter));
+            .find((modelFilterStatus) =>
+              modelFilterStatus.dataPassesFilter(syncAction.data),
+            );
 
           if (!modelFilterStatus) {
             continue;
-          } else if (modelFilterStatus.activeLoadOperations.size > 0) {
-            modelFilterStatus.pendingSync.syncActions.push(syncAction);
-            modelFilterStatus.pendingSync.lastSyncId = Math.max(
-              message.lastSyncId,
-              modelFilterStatus.pendingSync.lastSyncId,
-            );
+          } else if (!modelFilterStatus.isLoaded()) {
+            modelFilterStatus.addToPendingSync(syncAction, message.lastSyncId);
           } else {
             filteredSync.push(syncAction);
           }
@@ -158,8 +154,8 @@ export class ModelDataCache<MS extends ModelsSpec> {
       for (const modelFilterStatus of this.#modelFilterStatuses.get(
         message.modelName,
       )!) {
-        const alreadyLoaded = modelFilterStatus.activeLoadOperations.size === 0;
-        modelFilterStatus.activeLoadOperations.add(operation);
+        const alreadyLoaded = modelFilterStatus.isLoaded();
+        modelFilterStatus.addLoadOperation(operation);
         if (alreadyLoaded) {
           // If this modelFilterStatus is now fully loaded, update the store
           // We need to call this from here, because there is no current call to "loadModelDataAsync" that would trigger this
@@ -192,16 +188,16 @@ export class ModelDataCache<MS extends ModelsSpec> {
       const relevantModelFilterStatuses = this.#modelFilterStatuses
         .get(message.modelName)!
         .filter(
-          ({ activeLoadOperations }) =>
-            matchingOperation && activeLoadOperations.has(matchingOperation),
+          (status) =>
+            matchingOperation && status.hasLoadOperation(matchingOperation),
         );
 
       for (const data of message.data) {
-        const modelFilterStatus = relevantModelFilterStatuses.find(
-          ({ filter }) => dataPassesFilter(data, filter),
+        const modelFilterStatus = relevantModelFilterStatuses.find((status) =>
+          status.dataPassesFilter(data),
         );
         if (modelFilterStatus) {
-          modelFilterStatus.pendingData.push(data);
+          modelFilterStatus.addToPendingData(data);
         }
       }
 
@@ -379,50 +375,57 @@ export class ModelDataCache<MS extends ModelsSpec> {
       return [];
     }
 
-    const { modelIndex, toLoadFilter } = indexAndFilterForLoad(
+    const modelIndexValues = indexAndFilterForLoad(
       modelName,
       modelFilter,
       this.#config.indexes,
     );
 
-    const { inStore, modelFilterStatus } = this.isModelDataInStore(
-      modelName,
-      toLoadFilter,
-    );
-    if (!inStore) {
-      if (modelFilterStatus) {
-        await promiseForAllLoadingListeners(modelFilterStatus);
-      } else {
-        const newModelFilterStatus: ModelFilterStatus<MS> = {
-          filter: toLoadFilter,
-          pendingData: [],
-          pendingSync: { lastSyncId: 0, syncActions: [] },
-          activeLoadOperations: new Set([]),
-        };
-        const loadModelDataFromStoragePromise = this.#loadModelDataFromStorage(
+    await Promise.all(
+      modelIndexValues.values.map(async (toLoadFilter) => {
+        const { inStore, modelFilterStatus } = this.isModelDataInStore(
           modelName,
-          modelIndex ? { index: modelIndex, filter: toLoadFilter } : undefined,
-        ).then((loadedModelData) => {
-          newModelFilterStatus.pendingData.push(...loadedModelData);
-        });
-        newModelFilterStatus.activeLoadOperations.add(
-          modelLoadOperationFromPromise(loadModelDataFromStoragePromise),
+          toLoadFilter,
         );
+        if (!inStore) {
+          if (modelFilterStatus) {
+            await modelFilterStatus.promiseForAllLoadingListeners();
+          } else {
+            const newModelFilterStatus = new ModelFilterStatus<MS>(
+              toLoadFilter,
+            );
+            const loadModelDataFromStoragePromise =
+              this.#loadModelDataFromStorage(
+                modelName,
+                modelIndexValues.index
+                  ? { index: modelIndexValues.index, filter: toLoadFilter }
+                  : undefined,
+              ).then((loadedModelData) => {
+                newModelFilterStatus.addToPendingData(...loadedModelData);
+              });
+            newModelFilterStatus.addLoadOperation(
+              modelLoadOperationFromPromise(loadModelDataFromStoragePromise),
+            );
 
-        for (const operation of this.#activeModelLoadOperations.get(
-          modelName,
-        )!) {
-          newModelFilterStatus.activeLoadOperations.add(operation);
+            for (const operation of this.#activeModelLoadOperations.get(
+              modelName,
+            )!) {
+              newModelFilterStatus.addLoadOperation(operation);
+            }
+
+            this.#modelFilterStatuses
+              .get(modelName)!
+              .push(newModelFilterStatus);
+
+            await this.updateStoreAfterModelFilterStatusLoaded(
+              modelName,
+              newModelFilterStatus,
+            );
+          }
         }
+      }),
+    );
 
-        this.#modelFilterStatuses.get(modelName)!.push(newModelFilterStatus);
-
-        await this.updateStoreAfterModelFilterStatusLoaded(
-          modelName,
-          newModelFilterStatus,
-        );
-      }
-    }
     if (unsubscriberHandle.called) {
       return [];
     }
@@ -434,23 +437,14 @@ export class ModelDataCache<MS extends ModelsSpec> {
     modelName: keyof MS['models'] & string,
     modelFilterStatus: ModelFilterStatus<MS>,
   ) {
-    await promiseForAllLoadingListeners(modelFilterStatus);
+    await modelFilterStatus.promiseForAllLoadingListeners();
 
-    this.#store.setMany(
-      modelName,
-      modelFilterStatus.pendingData,
-      this.#tombstoneModelObjectKeys,
-    );
+    const { pendingData, message } = modelFilterStatus.resetAndOtherThings();
+
+    this.#store.setMany(modelName, pendingData, this.#tombstoneModelObjectKeys);
 
     // TODO: Maybe move this to be part of the above operation?
-    this.#store.processMessage({
-      type: 'syncCatchUp',
-      lastSyncId: modelFilterStatus.pendingSync.lastSyncId,
-      sync: modelFilterStatus.pendingSync.syncActions,
-    });
-
-    modelFilterStatus.pendingData = [];
-    modelFilterStatus.pendingSync = { lastSyncId: 0, syncActions: [] };
+    this.#store.processMessage(message);
   }
 
   private loadModelDataFromStore(
@@ -470,13 +464,17 @@ export class ModelDataCache<MS extends ModelsSpec> {
       };
     }
 
-    const { toLoadFilter } = indexAndFilterForLoad(
+    const modelIndexValues = indexAndFilterForLoad(
       modelName,
       modelFilter,
       this.#config.indexes,
     );
 
-    const { inStore } = this.isModelDataInStore(modelName, toLoadFilter);
+    let inStore = true;
+    for (const toLoadFilter of modelIndexValues.values) {
+      const inStoreResult = this.isModelDataInStore(modelName, toLoadFilter);
+      inStore = inStore && inStoreResult.inStore;
+    }
     const data = this.#store.getMany(modelName, modelFilter);
     return {
       inStore,
@@ -486,19 +484,21 @@ export class ModelDataCache<MS extends ModelsSpec> {
 
   private isModelDataInStore(
     modelName: keyof MS['models'] & string,
-    loadFilter: ModelFilter<MS['models'], keyof MS['models'] & string>,
+    loadFilter: LiteralModelFilter<MS['models'], keyof MS['models'] & string>,
   ): {
     inStore: boolean;
     modelFilterStatus: ModelFilterStatus<MS> | undefined;
   } {
     const modelFilterStatus = this.#modelFilterStatuses
       .get(modelName)!
-      .find(({ filter }) => isExistingFilterSubset(filter, loadFilter));
+      .find((modelFilterStatus) =>
+        modelFilterStatus.isSubsetOfFilter(loadFilter),
+      );
     if (!modelFilterStatus) {
       return { inStore: false, modelFilterStatus: undefined };
     }
     return {
-      inStore: modelFilterStatus.activeLoadOperations.size === 0,
+      inStore: modelFilterStatus.isLoaded(),
       modelFilterStatus,
     };
   }
@@ -757,25 +757,6 @@ export class ModelDataCache<MS extends ModelsSpec> {
   }
 }
 
-function isExistingFilterSubset(
-  existingFilter: Record<string, unknown>,
-  newFilter: Record<string, unknown>,
-): boolean {
-  const existingKeys = Object.keys(existingFilter);
-  const newKeys = Object.keys(newFilter);
-
-  for (const existingKey of existingKeys) {
-    if (!newKeys.includes(existingKey)) {
-      return false;
-    }
-    if (existingFilter[existingKey] !== newFilter[existingKey]) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 function filterForModelRelationship<
   M extends Models,
   ModelName extends keyof M & string,
@@ -823,82 +804,10 @@ type VisitResultFromStore<
   allDataInStore: boolean;
 };
 
-function indexAndFilterForLoad<MS extends ModelsSpec>(
-  modelName: keyof MS['models'] & string,
-  modelFilter:
-    | ModelFilter<MS['models'], keyof MS['models'] & string>
-    | undefined,
-  indexes: ModelsIndexes<MS['models']> | undefined,
-): {
-  modelIndex: ModelIndex<MS['models'], keyof MS['models'] & string> | undefined;
-  toLoadFilter: ModelFilter<MS['models'], keyof MS['models'] & string>;
-} {
-  if (modelFilter) {
-    const modelIndex = findIndexForFilter(
-      indexes?.[modelName] ?? [],
-      modelFilter,
-    );
-    if (modelIndex) {
-      return {
-        modelIndex,
-        toLoadFilter: narrowFilterForIndex(modelIndex, modelFilter),
-      };
-    }
-  }
-
-  return {
-    modelIndex: undefined,
-    toLoadFilter: {},
-  };
-}
-
 type ModelMap<MS extends ModelsSpec, Value> = Map<
   keyof MS['models'] & string,
   Value
 >;
-
-type ModelFilterStatus<MS extends ModelsSpec> = {
-  filter: ModelFilter<MS['models'], keyof MS['models'] & string>;
-
-  pendingData: ModelData<MS['models'], keyof MS['models'] & string>[];
-  pendingSync: {
-    lastSyncId: number;
-    syncActions: SyncAction<MS['models'], keyof MS['models'] & string>[];
-  };
-
-  // If this is empty, then data is completely in store
-  activeLoadOperations: Set<ModelLoadOperation>;
-};
-
-async function promiseForAllLoadingListeners<MS extends ModelsSpec>(
-  status: ModelFilterStatus<MS>,
-): Promise<void> {
-  while (true) {
-    if (status.activeLoadOperations.size === 0) {
-      break;
-    }
-
-    const unsubscribers: (() => void)[] = [];
-    const operationPromises: Promise<void>[] = [];
-    for (const operation of status.activeLoadOperations) {
-      operationPromises.push(
-        new Promise<void>((res) => {
-          unsubscribers.push(
-            operation.subscribe(() => {
-              res();
-              status.activeLoadOperations.delete(operation);
-            }),
-          );
-        }),
-      );
-    }
-
-    await Promise.all(operationPromises);
-    for (const unsubscribe of unsubscribers) {
-      unsubscribe();
-    }
-  }
-}
 
 // Represents either a load from storage or a load from a lazy bootstrap
 type ModelLoadOperation = {
@@ -958,4 +867,133 @@ function syncGroupModelLoadOperation<MS extends ModelsSpec>(
       }
     },
   };
+}
+
+class ModelFilterStatus<MS extends ModelsSpec> {
+  #filter: LiteralModelFilter<MS['models'], keyof MS['models'] & string>;
+
+  #pendingData: ModelData<MS['models'], keyof MS['models'] & string>[];
+  #pendingSync: {
+    lastSyncId: number;
+    syncActions: SyncAction<MS['models'], keyof MS['models'] & string>[];
+  };
+
+  #activeLoadOperations: Set<ModelLoadOperation>;
+  #dataInStore: boolean;
+
+  constructor(
+    filter: LiteralModelFilter<MS['models'], keyof MS['models'] & string>,
+  ) {
+    this.#filter = filter;
+    this.#pendingData = [];
+    this.#pendingSync = { lastSyncId: 0, syncActions: [] };
+    this.#activeLoadOperations = new Set([]);
+    this.#dataInStore = false;
+  }
+
+  isLoaded() {
+    return this.#activeLoadOperations.size === 0 && this.#dataInStore;
+  }
+
+  isSubsetOfFilter(newFilter: Record<string, unknown>): boolean {
+    return isExistingFilterSubset(this.#filter, newFilter);
+  }
+
+  async promiseForAllLoadingListeners() {
+    while (true) {
+      if (this.#activeLoadOperations.size === 0) {
+        break;
+      }
+
+      const unsubscribers: (() => void)[] = [];
+      const operationPromises: Promise<void>[] = [];
+      for (const operation of this.#activeLoadOperations) {
+        operationPromises.push(
+          new Promise<void>((res) => {
+            unsubscribers.push(
+              operation.subscribe(() => {
+                res();
+                this.#activeLoadOperations.delete(operation);
+              }),
+            );
+          }),
+        );
+      }
+
+      await Promise.all(operationPromises);
+      for (const unsubscribe of unsubscribers) {
+        unsubscribe();
+      }
+    }
+  }
+
+  dataPassesFilter(
+    data: ModelData<MS['models'], keyof MS['models'] & string>,
+  ): boolean {
+    return dataPassesFilter(data, this.#filter);
+  }
+
+  addToPendingSync(
+    syncAction: SyncAction<MS['models'], keyof MS['models'] & string>,
+    lastSyncId: number,
+  ) {
+    this.#pendingSync.syncActions.push(syncAction);
+    this.#pendingSync.lastSyncId = Math.max(
+      lastSyncId,
+      this.#pendingSync.lastSyncId,
+    );
+  }
+
+  addToPendingData(
+    ...data: ModelData<MS['models'], keyof MS['models'] & string>[]
+  ) {
+    this.#pendingData.push(...data);
+  }
+
+  resetAndOtherThings() {
+    const pendingData = this.#pendingData;
+
+    const message: SyncCatchUpMessage<MS['models']> = {
+      type: 'syncCatchUp',
+      lastSyncId: this.#pendingSync.lastSyncId,
+      sync: this.#pendingSync.syncActions,
+    };
+
+    this.#pendingData = [];
+    this.#pendingSync = { lastSyncId: 0, syncActions: [] };
+    this.#dataInStore = true;
+
+    return {
+      pendingData,
+      message,
+    };
+  }
+
+  addLoadOperation(operation: ModelLoadOperation) {
+    this.#dataInStore = false;
+    this.#activeLoadOperations.add(operation);
+  }
+
+  hasLoadOperation(operation: ModelLoadOperation) {
+    return this.#activeLoadOperations.has(operation);
+  }
+}
+
+function isExistingFilterSubset(
+  existingFilter: Record<string, unknown>,
+  newFilter: Record<string, unknown>,
+): boolean {
+  const existingKeys = Object.keys(existingFilter);
+  const newKeys = Object.keys(newFilter);
+
+  for (const existingKey of existingKeys) {
+    if (!newKeys.includes(existingKey)) {
+      return false;
+    }
+    if (existingFilter[existingKey] !== newFilter[existingKey]) {
+      return false;
+    }
+  }
+
+  return true;
 }

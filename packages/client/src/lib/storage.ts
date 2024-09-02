@@ -4,10 +4,10 @@ import type {
   SyncAction,
   MutationArgs,
   ModelsSpec,
-  ModelFilter,
   ModelData,
 } from './core';
 import type { ModelIndex } from './indexes';
+import type { ModelFilter } from './filters';
 
 export type StoragePendingTransaction<MS extends ModelsSpec> = {
   id: number;

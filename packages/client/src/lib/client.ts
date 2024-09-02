@@ -5,11 +5,8 @@ import {
   type MutationOptions,
   getMutationLocalChanges,
   type ModelsConfig,
-  type ModelFilter,
-  type ModelData,
   modelObjectKey,
 } from './core';
-import type { ModelIndex } from './indexes';
 import { ModelDataCache } from './model-data-cache';
 import { ModelDataLoader } from './model-data-loader';
 import type { CreateModelDataStoreOptions } from './model-data-store';
