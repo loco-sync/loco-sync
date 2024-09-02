@@ -127,9 +127,7 @@ const Content = () => {
     if (person.pets?.some((pet) => textMatchesSearch(pet.type, searchInput))) {
       return true;
     }
-    if (
-      person.pets?.some((pet) => textMatchesSearch(pet.breed, searchInput))
-    ) {
+    if (person.pets?.some((pet) => textMatchesSearch(pet.breed, searchInput))) {
       return true;
     }
     if (
@@ -156,7 +154,7 @@ const Content = () => {
           }}
         >
           <span>Name: {person.name}</span>
-          <br/>
+          <br />
           <span>Pets:</span>
           <ul>
             {person.pets?.map((pet) => (
@@ -165,7 +163,7 @@ const Content = () => {
               </li>
             ))}
           </ul>
-          <br/>
+          <br />
           <span>Hobbies:</span>
           <ul>
             {person.hobbies?.map((personHobby) => (

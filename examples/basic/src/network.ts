@@ -64,4 +64,4 @@ export const network = createFakeNetworkAdapter<MS>({
       },
     },
   ],
-})
+});
