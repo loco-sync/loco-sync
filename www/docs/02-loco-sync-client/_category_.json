@@ -1,0 +1,8 @@
+{
+  "label": "Loco Sync Client",
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "Loco Sync Client is built from three components: a config, a storage adapter, and a network adapter. The following sections describe each in detail."
+  }
+}

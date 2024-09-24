@@ -1,6 +1,6 @@
-# LocoSync
+# Loco Sync
 
-LocoSync is a sync engine to power local-first applications.
+Loco Sync is a sync engine to power local-first applications.
 
 ## Introduction
 
@@ -132,6 +132,7 @@ const { Provider, useMutation, useQuery, useQueryOne } =
   createLocoSyncReact(config);
 
 const client = new LocoSyncClient({
+  config,
   storage,
   network,
 });
