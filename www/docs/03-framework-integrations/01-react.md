@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # React Integration
 
-Setup LocoSync in React, using a config, storage adapter, and network adapter:
+Setup Loco Sync in React, using a config, storage adapter, and network adapter:
 
 ```tsx
 import { LocoSyncClient } from '@loco-sync/client';

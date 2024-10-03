@@ -1,7 +1,7 @@
 {
   "name": "@loco-sync/idb",
   "version": "0.0.1-beta.28",
-  "description": "IndexedDB storage adapter for LocoSync, a sync engine for local-first applications",
+  "description": "IndexedDB storage adapter for Loco Sync, a sync engine for local-first applications",
   "author": "Kevin Kusch",
   "license": "MIT",
   "repository": {

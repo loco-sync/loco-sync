@@ -25,7 +25,7 @@ const FeatureList: FeatureItem[] = [
     description: (
       <>
         Loco Sync does not require a particular backend tech stack, but rather
-        let's you integrate your own.
+        lets you integrate your own.
       </>
     ),
   },

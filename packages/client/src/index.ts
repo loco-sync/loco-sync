@@ -7,6 +7,6 @@ export * from './lib/client';
 export * from './lib/model-data-store';
 export * from './lib/model-data-cache';
 export * from './lib/model-data-loader';
-export * from './lib/query-observers';
+export * from './lib/query';
 export * from './lib/indexes';
 export * from './lib/filters';

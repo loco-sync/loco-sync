@@ -6,7 +6,7 @@ import type {
   SyncListener,
 } from '../../lib/network';
 import { LocoSyncClient } from '../../lib/client';
-import { QueryObserver } from '../../lib/query-observers';
+import { Query } from '../../lib/query';
 import { modelObjectKey, type ModelData } from '../../lib/core';
 import { vitest } from 'vitest';
 import { inArray, type ModelFilter } from '../../lib/filters';
@@ -236,12 +236,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     });
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>(
-      'Group',
-      { id: '1' },
-      {},
-    );
-    await cache.addObserver(observer);
+    const query = new Query<MS, 'Group', {}>('Group', { id: '1' }, {});
+    await cache.addQuery(query);
 
     addStorageFnCall(
       'applySyncActions',
@@ -611,12 +607,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>(
-      'Group',
-      { id: '1' },
-      {},
-    );
-    const addObserverPromise = cache.addObserver(observer);
+    const query = new Query<MS, 'Group', {}>('Group', { id: '1' }, {});
+    const addObserverPromise = cache.addQuery(query);
     expect(cache.getStore().getOne('Group', { id: '1' })).toEqual(undefined);
     expect(cache.getStore().getOne('Group', { id: '2' })).toEqual(undefined);
 
@@ -787,12 +779,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>(
-      'Group',
-      { id: '1' },
-      {},
-    );
-    await cache.addObserver(observer);
+    const query = new Query<MS, 'Group', {}>('Group', { id: '1' }, {});
+    await cache.addQuery(query);
     expect(cache.getStore().getOne('Group', { id: '1' })).toEqual(undefined);
     expect(cache.getStore().getOne('Group', { id: '2' })).toEqual({
       id: '2',
@@ -954,12 +942,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>(
-      'Group',
-      { id: '1' },
-      {},
-    );
-    const addObserverPromise = cache.addObserver(observer);
+    const query = new Query<MS, 'Group', {}>('Group', { id: '1' }, {});
+    const addObserverPromise = cache.addQuery(query);
     expect(cache.getStore().getOne('Group', { id: '1' })).toEqual(undefined);
 
     // Bootstrap includes newly updated Group 1
@@ -1105,12 +1089,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>(
-      'Group',
-      { id: '1' },
-      {},
-    );
-    await cache.addObserver(observer);
+    const query = new Query<MS, 'Group', {}>('Group', { id: '1' }, {});
+    await cache.addQuery(query);
     expect(cache.getStore().getOne('Group', { id: '1' })).toEqual({
       id: '1',
       name: 'Group 1',
@@ -1273,12 +1253,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>(
-      'Group',
-      { id: '1' },
-      {},
-    );
-    const addObserverPromise = cache.addObserver(observer);
+    const query = new Query<MS, 'Group', {}>('Group', { id: '1' }, {});
+    const addObserverPromise = cache.addQuery(query);
     expect(cache.getStore().getOne('Group', { id: '1' })).toEqual(undefined);
 
     // Bootstrap includes newly deleted Group 1
@@ -1423,12 +1399,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>(
-      'Group',
-      { id: '1' },
-      {},
-    );
-    await cache.addObserver(observer);
+    const query = new Query<MS, 'Group', {}>('Group', { id: '1' }, {});
+    await cache.addQuery(query);
     expect(cache.getStore().getOne('Group', { id: '1' })).toEqual({
       id: '1',
       name: 'Group 1',
@@ -1523,12 +1495,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>(
-      'Group',
-      { id: '1' },
-      {},
-    );
-    await cache.addObserver(observer);
+    const query = new Query<MS, 'Group', {}>('Group', { id: '1' }, {});
+    await cache.addQuery(query);
 
     expect(cache.getStore().getOne('Group', { id: '1' })).toEqual(undefined);
 
@@ -1648,11 +1616,11 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const query = new Query<MS, 'Group', {}>('Group', {}, {});
     const observerSubscriber = vitest.fn();
-    observer.subscribe(() => observerSubscriber(observer.getSnapshotMany()));
-    const addObserverPromise = cache.addObserver(observer);
-    expect(observer.getSnapshotMany()).toEqual({
+    query.subscribe(() => observerSubscriber(query.getSnapshotMany()));
+    const addObserverPromise = cache.addQuery(query);
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -1720,7 +1688,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -1775,7 +1743,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     ]);
   });
 
-  test('Sync - sync group bootstrap, data not subscribed to by an observer does not get added to store', async () => {
+  test('Sync - sync group bootstrap, data not subscribed to by an query does not get added to store', async () => {
     const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
     const client = new LocoSyncClient({
       config: {
@@ -1943,10 +1911,10 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const query = new Query<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    const addObserverPromise = cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    const addObserverPromise = cache.addQuery(query);
 
     addNetworkFnCall(
       'deltaSync',
@@ -1976,7 +1944,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -2011,7 +1979,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -2103,10 +2071,10 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const query = new Query<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    const addObserverPromise = cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    const addObserverPromise = cache.addQuery(query);
 
     addNetworkFnCall(
       'deltaSync',
@@ -2136,7 +2104,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -2150,7 +2118,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -2291,12 +2259,12 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const query = new Query<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    const addObserverPromise = cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    const addObserverPromise = cache.addQuery(query);
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -2333,7 +2301,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -2453,12 +2421,12 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const query = new Query<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    const addObserverPromise = cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    const addObserverPromise = cache.addQuery(query);
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -2472,7 +2440,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -2527,7 +2495,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     ]);
   });
 
-  test('Sync - sync group bootstrap, dependent observer added after lazy bootstrap started', async () => {
+  test('Sync - sync group bootstrap, dependent query added after lazy bootstrap started', async () => {
     const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
     const client = new LocoSyncClient({
       config: {
@@ -2612,11 +2580,11 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const query = new Query<MS, 'Group', {}>('Group', {}, {});
     const observerSubscriber = vitest.fn();
-    observer.subscribe(() => observerSubscriber(observer.getSnapshotMany()));
-    const addObserverPromise = cache.addObserver(observer);
-    expect(observer.getSnapshotMany()).toEqual({
+    query.subscribe(() => observerSubscriber(query.getSnapshotMany()));
+    const addObserverPromise = cache.addQuery(query);
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -2667,7 +2635,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     ]);
   });
 
-  test('Sync - concurrent lazy bootstrap and storage loads, optimistic change before loads still emitted to observer', async () => {
+  test('Sync - concurrent lazy bootstrap and storage loads, optimistic change before loads still emitted to query', async () => {
     const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
     const client = new LocoSyncClient({
       config: {
@@ -2794,12 +2762,12 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const query = new Query<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    const addObserverPromise = cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    const addObserverPromise = cache.addQuery(query);
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [
         {
           id: '3',
@@ -2882,7 +2850,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     ]);
   });
 
-  test('Sync - concurrent lazy bootstrap and storage loads, optimistic change during loads still emitted to observer', async () => {
+  test('Sync - concurrent lazy bootstrap and storage loads, optimistic change during loads still emitted to query', async () => {
     const { network, storage, addNetworkFnCall, addStorageFnCall } = setup();
     const client = new LocoSyncClient({
       config: {
@@ -2968,12 +2936,12 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     );
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Group', {}>('Group', {}, {});
+    const query = new Query<MS, 'Group', {}>('Group', {}, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    const addObserverPromise = cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    const addObserverPromise = cache.addQuery(query);
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [],
       isHydrated: false,
     });
@@ -3028,7 +2996,7 @@ describe('LocoSyncClient, network.initSync() handler', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(observer.getSnapshotMany()).toEqual({
+    expect(query.getSnapshotMany()).toEqual({
       data: [
         {
           id: '3',
@@ -3202,14 +3170,10 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     });
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Post', {}>(
-      'Post',
-      { authorId: '1' },
-      {},
-    );
+    const query = new Query<MS, 'Post', {}>('Post', { authorId: '1' }, {});
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    await cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    await cache.addQuery(query);
 
     expect(observerSubscribe.mock.calls).toEqual([
       [
@@ -3350,14 +3314,14 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     });
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Post', {}>(
+    const query = new Query<MS, 'Post', {}>(
       'Post',
       { authorId: inArray(['1', '2']) },
       {},
     );
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    await cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    await cache.addQuery(query);
 
     expect(observerSubscribe.mock.calls).toEqual([
       [
@@ -3523,14 +3487,14 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     });
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Post', {}>(
+    const query = new Query<MS, 'Post', {}>(
       'Post',
       { authorId: inArray(['1', '2']), title: 'title' },
       {},
     );
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    await cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    await cache.addQuery(query);
 
     expect(observerSubscribe.mock.calls).toEqual([
       [
@@ -3746,14 +3710,14 @@ describe('LocoSyncClient, network.initSync() handler', () => {
     });
 
     const cache = client.getCache();
-    const observer = new QueryObserver<MS, 'Post', {}>(
+    const query = new Query<MS, 'Post', {}>(
       'Post',
       { authorId: inArray(['1', '2']), title: inArray(['title 1', 'title 2']) },
       {},
     );
     const observerSubscribe = vitest.fn();
-    observer.subscribe(() => observerSubscribe(observer.getSnapshotMany()));
-    await cache.addObserver(observer);
+    query.subscribe(() => observerSubscribe(query.getSnapshotMany()));
+    await cache.addQuery(query);
 
     expect(observerSubscribe.mock.calls).toEqual([
       [

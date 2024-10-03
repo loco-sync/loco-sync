@@ -2,7 +2,7 @@ import type { ModelsSpec } from './core';
 import type { ModelRelationshipSelection, ModelResult } from './relationships';
 import type { ModelFilter } from './filters';
 
-export class QueryObserver<
+export class Query<
   MS extends ModelsSpec,
   ModelName extends keyof MS['models'] & string,
   Selection extends ModelRelationshipSelection<

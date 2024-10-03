@@ -18,7 +18,7 @@ import {
   type CreateModelDataStoreOptions,
   type ModelDataStore,
 } from './model-data-store';
-import type { QueryObserver } from './query-observers';
+import type { Query } from './query';
 import type {
   ModelRelationshipDef,
   ModelRelationshipSelection,
@@ -28,7 +28,7 @@ import type {
 import type { StorageAdapter } from './storage';
 import type { SyncCatchUpMessage, ToProcessMessage } from './transactionUtils';
 
-type AnyQueryObserver<MS extends ModelsSpec> = QueryObserver<MS, any, any>;
+type AnyQuery<MS extends ModelsSpec> = Query<MS, any, any>;
 
 export type CacheMessage<MS extends ModelsSpec> =
   | ToProcessMessage<MS['models']>
@@ -56,7 +56,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
   #store: ModelDataStore<MS['models']>;
   #config: ModelsConfig<MS>;
   #loadModelDataFromStorage: StorageAdapter<MS>['loadModelData'];
-  #observers: Set<AnyQueryObserver<MS>>;
+  #queries: Set<AnyQuery<MS>>;
   #modelFilterStatuses: ModelMap<MS, ModelFilterStatus<MS>[]>;
   #activeModelLoadOperations: ModelMap<
     MS,
@@ -75,7 +75,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
     this.#loadModelDataFromStorage = loadModelDataFromStorage;
     this.#config = config;
     this.#tombstoneModelObjectKeys = tombstoneModelObjectKeys;
-    this.#observers = new Set();
+    this.#queries = new Set();
     const modelNames = Object.keys(
       this.#config.modelDefs,
     ) as (keyof MS['models'] & string)[];
@@ -104,18 +104,18 @@ export class ModelDataCache<MS extends ModelsSpec> {
     return this.#store;
   }
 
-  addObserver(observer: AnyQueryObserver<MS>) {
-    this.#observers.add(observer);
-    return this.loadResultsForObserver(observer);
+  addQuery(query: AnyQuery<MS>) {
+    this.#queries.add(query);
+    return this.loadResultsForQuery(query);
   }
 
-  removeObserver(observer: AnyQueryObserver<MS>) {
-    // TODO: How to unsubscribe this observer from store?
-    // I think the unsubscribe fns would created in “loadDataForObserver” would need to be stored on the object for access here
+  removeQuery(query: AnyQuery<MS>) {
+    // TODO: How to unsubscribe this query from store?
+    // I think the unsubscribe fns would created in “loadDataForQuery” would need to be stored on the object for access here
 
-    // TBD: Could detect data and drop data that no longer has any observers associated with it
-    // TBD: Would probably want to wait for a bit before dropping data in case an equivalent observer is re-added
-    this.#observers.delete(observer);
+    // TBD: Could detect data and drop data that no longer has any queries associated with it
+    // TBD: Would probably want to wait for a bit before dropping data in case an equivalent query is re-added
+    this.#queries.delete(query);
   }
 
   processMessage(message: CacheMessage<MS>) {
@@ -124,8 +124,8 @@ export class ModelDataCache<MS extends ModelsSpec> {
       for (const syncAction of message.sync) {
         if (syncAction.action === 'insert' || syncAction.action === 'update') {
           const modelFilterStatus = this.#modelFilterStatuses
-            .get(syncAction.modelName)!
-            .find((modelFilterStatus) =>
+            .get(syncAction.modelName)
+            ?.find((modelFilterStatus) =>
               modelFilterStatus.dataPassesFilter(syncAction.data),
             );
 
@@ -147,13 +147,13 @@ export class ModelDataCache<MS extends ModelsSpec> {
       });
     } else if (message.type === 'modelDataLoading') {
       const operation = syncGroupModelLoadOperation(message.syncGroup);
-      this.#activeModelLoadOperations.get(message.modelName)!.add(operation);
+      this.#activeModelLoadOperations.get(message.modelName)?.add(operation);
 
       // Add to all modelFilterStatuses for this model, because we don't know which filter this data will match
       // In the future we may load by filter, in which case we would only add to the relevant modelFilterStatus
       for (const modelFilterStatus of this.#modelFilterStatuses.get(
         message.modelName,
-      )!) {
+      ) ?? []) {
         const alreadyLoaded = modelFilterStatus.isLoaded();
         modelFilterStatus.addLoadOperation(operation);
         if (alreadyLoaded) {
@@ -169,7 +169,10 @@ export class ModelDataCache<MS extends ModelsSpec> {
       let matchingOperation: SyncGroupModelLoadOperation<MS> | undefined;
       const modelOperations = this.#activeModelLoadOperations.get(
         message.modelName,
-      )!;
+      );
+      if (!modelOperations) {
+        return;
+      }
       for (const operation of modelOperations) {
         if (
           this.#config.syncGroupDefs?.equals(
@@ -185,12 +188,13 @@ export class ModelDataCache<MS extends ModelsSpec> {
         return;
       }
 
-      const relevantModelFilterStatuses = this.#modelFilterStatuses
-        .get(message.modelName)!
-        .filter(
-          (status) =>
-            matchingOperation && status.hasLoadOperation(matchingOperation),
-        );
+      const relevantModelFilterStatuses =
+        this.#modelFilterStatuses
+          .get(message.modelName)
+          ?.filter(
+            (status) =>
+              matchingOperation && status.hasLoadOperation(matchingOperation),
+          ) ?? [];
 
       for (const data of message.data) {
         const modelFilterStatus = relevantModelFilterStatuses.find((status) =>
@@ -211,22 +215,18 @@ export class ModelDataCache<MS extends ModelsSpec> {
     }
   }
 
-  private async loadResultsForObserver(
-    observer: AnyQueryObserver<MS>,
-  ): Promise<void> {
-    const { allDataInStore, data } =
-      this.loadResultsForObserverFromStore(observer);
-    observer.setResult(data, allDataInStore);
+  private async loadResultsForQuery(query: AnyQuery<MS>): Promise<void> {
+    const { allDataInStore, data } = this.loadResultsForQueryFromStore(query);
+    query.setResult(data, allDataInStore);
     if (!allDataInStore) {
-      const { data, isStale } =
-        await this.loadResultsForObserverAsync(observer);
+      const { data, isStale } = await this.loadResultsForQueryAsync(query);
       if (!isStale) {
-        observer.setResult(data, true);
+        query.setResult(data, true);
       }
     }
   }
 
-  private loadResultsForObserverFromStore(observer: AnyQueryObserver<MS>): {
+  private loadResultsForQueryFromStore(query: AnyQuery<MS>): {
     allDataInStore: boolean;
     data: ModelResult<MS['models'], MS['relationshipDefs'], any, any>[];
   } {
@@ -242,19 +242,19 @@ export class ModelDataCache<MS extends ModelsSpec> {
       for (const unsubscribe of unsubscriberHandle.unsubscribers) {
         unsubscribe();
       }
-      void this.loadResultsForObserver(observer);
+      void this.loadResultsForQuery(query);
     };
 
     unsubscriberHandle.unsubscribers.push(
       this.#store.subscribe(
-        observer.modelName,
-        observer.modelFilter,
+        query.modelName,
+        query.modelFilter,
         subscribeToStore,
       ),
     );
     const { inStore, data: modelData } = this.loadModelDataFromStore(
-      observer.modelName,
-      observer.modelFilter,
+      query.modelName,
+      query.modelFilter,
       unsubscriberHandle,
     );
     let allDataInStore = inStore;
@@ -267,9 +267,9 @@ export class ModelDataCache<MS extends ModelsSpec> {
     >[] = [];
     for (const data of modelData) {
       const applyRelationshipsResult = this.applyRelationshipsFromStore(
-        observer.modelName,
+        query.modelName,
         data,
-        observer.selection,
+        query.selection,
         subscribeToStore,
         unsubscriberHandle,
       );
@@ -291,9 +291,7 @@ export class ModelDataCache<MS extends ModelsSpec> {
     };
   }
 
-  private async loadResultsForObserverAsync(
-    observer: AnyQueryObserver<MS>,
-  ): Promise<{
+  private async loadResultsForQueryAsync(query: AnyQuery<MS>): Promise<{
     data: ModelResult<MS['models'], MS['relationshipDefs'], any, any>[];
     isStale: boolean;
   }> {
@@ -309,20 +307,20 @@ export class ModelDataCache<MS extends ModelsSpec> {
       for (const unsubscribe of unsubscriberHandle.unsubscribers) {
         unsubscribe();
       }
-      void this.loadResultsForObserver(observer);
+      void this.loadResultsForQuery(query);
     };
 
     unsubscriberHandle.unsubscribers.push(
       this.#store.subscribe(
-        observer.modelName,
-        observer.modelFilter,
+        query.modelName,
+        query.modelFilter,
         subscribeToStore,
       ),
     );
 
     const modelData = await this.loadModelDataAsync(
-      observer.modelName,
-      observer.modelFilter,
+      query.modelName,
+      query.modelFilter,
       unsubscriberHandle,
     );
 
@@ -336,9 +334,9 @@ export class ModelDataCache<MS extends ModelsSpec> {
     const visitResults = await Promise.all(
       modelData.map((data) =>
         this.applyRelationshipsAsync(
-          observer.modelName,
+          query.modelName,
           data,
-          observer.selection,
+          query.selection,
           subscribeToStore,
           unsubscriberHandle,
         ),
@@ -409,13 +407,13 @@ export class ModelDataCache<MS extends ModelsSpec> {
 
             for (const operation of this.#activeModelLoadOperations.get(
               modelName,
-            )!) {
+            ) ?? []) {
               newModelFilterStatus.addLoadOperation(operation);
             }
 
             this.#modelFilterStatuses
-              .get(modelName)!
-              .push(newModelFilterStatus);
+              .get(modelName)
+              ?.push(newModelFilterStatus);
 
             await this.updateStoreAfterModelFilterStatusLoaded(
               modelName,
@@ -490,8 +488,8 @@ export class ModelDataCache<MS extends ModelsSpec> {
     modelFilterStatus: ModelFilterStatus<MS> | undefined;
   } {
     const modelFilterStatus = this.#modelFilterStatuses
-      .get(modelName)!
-      .find((modelFilterStatus) =>
+      .get(modelName)
+      ?.find((modelFilterStatus) =>
         modelFilterStatus.isSubsetOfFilter(loadFilter),
       );
     if (!modelFilterStatus) {

@@ -7,7 +7,7 @@ import React, {
   useState,
   useMemo,
 } from 'react';
-import { LocoSyncClient, QueryObserver } from '@loco-sync/client';
+import { LocoSyncClient, Query } from '@loco-sync/client';
 import type {
   ModelRelationshipSelection,
   ModelFilter,
@@ -214,33 +214,33 @@ const useQueryOneFromStore = <
   modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
   selection?: Selection,
 ): QueryOneResult<MS, ModelName, Selection> => {
-  const observerRef = useRef<QueryObserver<MS, ModelName, Selection>>();
+  const queryRef = useRef<Query<MS, ModelName, Selection>>();
 
   if (
-    !observerRef.current ||
-    observerRef.current.modelName !== modelName ||
-    JSON.stringify(observerRef.current.modelFilter) !==
+    !queryRef.current ||
+    queryRef.current.modelName !== modelName ||
+    JSON.stringify(queryRef.current.modelFilter) !==
       JSON.stringify(modelFilter) ||
-    JSON.stringify(observerRef.current.selection) !== JSON.stringify(selection)
+    JSON.stringify(queryRef.current.selection) !== JSON.stringify(selection)
   ) {
-    const newObserver = new QueryObserver(modelName, modelFilter, selection);
-    observerRef.current = newObserver;
-    cache.addObserver(newObserver);
+    const newQuery = new Query(modelName, modelFilter, selection);
+    queryRef.current = newQuery;
+    cache.addQuery(newQuery);
   }
-  const observer = observerRef.current;
+  const query = queryRef.current;
 
   return useSyncExternalStore(
     useCallback(
       (cb) => {
-        const unsubscribe = observer.subscribe(cb);
+        const unsubscribe = query.subscribe(cb);
         return () => {
           unsubscribe();
-          cache.removeObserver(observer);
+          cache.removeQuery(query);
         };
       },
-      [observer, cache],
+      [query, cache],
     ),
-    useCallback(() => observer.getSnapshotOne(), [observer]),
+    useCallback(() => query.getSnapshotOne(), [query]),
   );
 };
 
@@ -258,32 +258,32 @@ const useQueryManyFromStore = <
   modelFilter: ModelFilter<MS['models'], ModelName> | undefined,
   selection?: Selection,
 ): QueryManyResult<MS, ModelName, Selection> => {
-  const observerRef = useRef<QueryObserver<MS, ModelName, Selection>>();
+  const queryRef = useRef<Query<MS, ModelName, Selection>>();
 
   if (
-    !observerRef.current ||
-    observerRef.current.modelName !== modelName ||
-    JSON.stringify(observerRef.current.modelFilter) !==
+    !queryRef.current ||
+    queryRef.current.modelName !== modelName ||
+    JSON.stringify(queryRef.current.modelFilter) !==
       JSON.stringify(modelFilter) ||
-    JSON.stringify(observerRef.current.selection) !== JSON.stringify(selection)
+    JSON.stringify(queryRef.current.selection) !== JSON.stringify(selection)
   ) {
-    const newObserver = new QueryObserver(modelName, modelFilter, selection);
-    observerRef.current = newObserver;
-    cache.addObserver(newObserver);
+    const newObserver = new Query(modelName, modelFilter, selection);
+    queryRef.current = newObserver;
+    cache.addQuery(newObserver);
   }
-  const observer = observerRef.current;
+  const query = queryRef.current;
 
   return useSyncExternalStore(
     useCallback(
       (cb) => {
-        const unsubscribe = observer.subscribe(cb);
+        const unsubscribe = query.subscribe(cb);
         return () => {
           unsubscribe();
-          cache.removeObserver(observer);
+          cache.removeQuery(query);
         };
       },
-      [observer, cache],
+      [query, cache],
     ),
-    useCallback(() => observer.getSnapshotMany(), [observer]),
+    useCallback(() => query.getSnapshotMany(), [query]),
   );
 };
