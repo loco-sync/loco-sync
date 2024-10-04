@@ -102,13 +102,18 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       };
     },
     applySyncActions: async (lastSyncId, sync) => {
-      const storeNames: string[] = [_TRANSACTIONS, _METADATA];
-      for (const { modelName } of sync) {
-        storeNames.push(modelName);
+      const storeNames: Set<string> = new Set([_TRANSACTIONS, _METADATA]);
+      const filteredSync: typeof sync = [];
+      for (const action of sync) {
+        const modelNameInConfig = !!config.modelDefs[action.modelName];
+        if (modelNameInConfig) {
+          filteredSync.push(action);
+          storeNames.add(action.modelName);
+        }
       }
 
       const db = await getDb();
-      const tx = db.transaction(storeNames, 'readwrite');
+      const tx = db.transaction(Array.from(storeNames), 'readwrite');
       const metadataStore = tx.objectStore(_METADATA);
 
       const metadata: Metadata<MS['syncGroup']> | undefined =
@@ -122,7 +127,7 @@ export const createLocoSyncIdbAdapter = <MS extends ModelsSpec>(
       }
 
       await Promise.all(
-        sync.map(async (syncAction) => {
+        filteredSync.map(async (syncAction) => {
           const store = tx.objectStore(syncAction.modelName);
           if (syncAction.action === 'insert') {
             return store.put(syncAction.data);
