@@ -1,6 +1,6 @@
 {
   "name": "@loco-sync/client",
-  "version": "0.0.1-beta.29",
+  "version": "0.0.1-beta.30",
   "description": "Client for Loco Sync, a sync engine for local-first applications",
   "author": "Kevin Kusch",
   "license": "MIT",
