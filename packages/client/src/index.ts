@@ -10,3 +10,4 @@ export * from './lib/model-data-loader';
 export * from './lib/query';
 export * from './lib/indexes';
 export * from './lib/filters';
+export * as schema from './lib/schema';
