@@ -2710,8 +2710,6 @@ describe('LocoSyncClient, network.initSync() handler', () => {
       }),
     );
 
-    addStorageFnCall('applySyncActions', [100, []], Promise.resolve());
-
     const sendTransaction = controlledPromise<SendTransactionResult>();
     addNetworkFnCall(
       'sendTransaction',
@@ -2727,6 +2725,8 @@ describe('LocoSyncClient, network.initSync() handler', () => {
       ],
       sendTransaction.promise,
     );
+
+    addStorageFnCall('applySyncActions', [100, []], Promise.resolve());
 
     await client.start();
 
